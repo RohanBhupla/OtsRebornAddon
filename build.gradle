@@ -17,6 +17,7 @@ archivesBaseName = "RebornAddon"
 
 sourceCompatibility = targetCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
 compileJava.options.encoding = "UTF-8"
+compileJava.options.compilerArgs += ['-proc:none']
 
 minecraft {
     mappings channel: 'snapshot', version: '20171003-1.12'
@@ -50,8 +51,21 @@ sourceSets {
     main { output.resourcesDir = output.classesDir }
 }
 
+def otsModsDir = file(System.getenv('OTS_MODS_DIR') ?: 'D:/Mods/Curseforge/minecraft/Instances/Otsutsuki Reborn/mods')
+
 dependencies {
     minecraft 'net.minecraftforge:forge:1.12.2-14.23.5.2855'
+    compileOnly fileTree(dir: otsModsDir, include: ['*.jar'], exclude: ['RebornAddon-*.jar'])
+}
+
+jar {
+    manifest {
+        attributes(
+                'FMLCorePlugin': 'net.rebornaddon.asm.RebornAddonLoadingPlugin',
+                'FMLCorePluginContainsFMLMod': 'true',
+                'ForceLoadAsMod': 'true'
+        )
+    }
 }
 
 processResources {

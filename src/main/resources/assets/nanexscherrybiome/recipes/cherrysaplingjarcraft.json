@@ -1,0 +1,26 @@
+{
+  "group": "nanexscherrybiome",
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "0",
+    "1",
+    "2"
+  ],
+  "key": {
+    "0": {
+      "item": "minecraft:glass"
+    },
+    "1": {
+      "type": "forge:ore_dict",
+      "ore": "cherrysapling"
+    },
+    "2": {
+      "item": "nanexscherrybiome:cherryplanksslab",
+      "data": 0
+    }
+  },
+  "result": {
+    "item": "nanexscherrybiome:cherrysaplingjar",
+    "count": 1
+  }
+}

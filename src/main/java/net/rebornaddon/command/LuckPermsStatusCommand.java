@@ -1,0 +1,78 @@
+package net.rebornaddon.command;
+
+import net.minecraft.command.CommandBase;
+import net.minecraft.command.ICommandSender;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.text.TextComponentString;
+import net.rebornaddon.village.LuckPermsBridge;
+import net.rebornaddon.village.VillageSelectionHandler;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
+public class LuckPermsStatusCommand extends CommandBase {
+    @Override
+    public String getName() {
+        return "rebornlp";
+    }
+
+    @Override
+    public List<String> getAliases() {
+        return Arrays.asList("rebornluckperms", "rlp");
+    }
+
+    @Override
+    public String getUsage(ICommandSender sender) {
+        return "/rebornlp [reset [player]]";
+    }
+
+    @Override
+    public int getRequiredPermissionLevel() {
+        return 2;
+    }
+
+    @Override
+    public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args,
+            BlockPos targetPos) {
+        if (args.length == 1) {
+            return getListOfStringsMatchingLastWord(args, "reset");
+        }
+
+        if (args.length == 2 && "reset".equalsIgnoreCase(args[0])) {
+            return getListOfStringsMatchingLastWord(args, server.getOnlinePlayerNames());
+        }
+
+        return Collections.emptyList();
+    }
+
+    @Override
+    public void execute(MinecraftServer server, ICommandSender sender, String[] args) {
+        if (args != null && args.length > 0 && "reset".equalsIgnoreCase(args[0])) {
+            EntityPlayerMP target = null;
+            if (args.length > 1) {
+                target = server.getPlayerList().getPlayerByUsername(args[1]);
+            } else if (sender instanceof EntityPlayerMP) {
+                target = (EntityPlayerMP) sender;
+            }
+
+            if (target == null) {
+                sender.sendMessage(new TextComponentString("Player must be online: /rebornlp reset <player>"));
+                return;
+            }
+
+            VillageSelectionHandler.INSTANCE.resetSelection(target, true, true);
+            sender.sendMessage(new TextComponentString("Village selection reset for " + target.getName()));
+            return;
+        }
+
+        LuckPermsBridge bridge = LuckPermsBridge.INSTANCE;
+        sender.sendMessage(new TextComponentString("LuckPerms detected: " + bridge.isAvailable(server)));
+        sender.sendMessage(new TextComponentString("Provider: " + bridge.providerName()));
+        sender.sendMessage(new TextComponentString("Bukkit plugin: " + bridge.hasBukkitPlugin()));
+        sender.sendMessage(new TextComponentString("Village groups: stone, leaf, cloud, sand, mist"));
+        sender.sendMessage(new TextComponentString("Reset command: /rebornlp reset [player]"));
+    }
+}
