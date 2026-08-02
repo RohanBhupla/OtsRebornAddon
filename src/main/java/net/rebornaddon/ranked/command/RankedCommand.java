@@ -6,12 +6,15 @@ import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.rebornaddon.ranked.RankedSystem;
 import net.rebornaddon.ranked.elo.PlayerStats;
 import net.rebornaddon.ranked.match.MatchMode;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 public class RankedCommand extends CommandBase {
@@ -29,6 +32,17 @@ public class RankedCommand extends CommandBase {
     @Override
     public int getRequiredPermissionLevel() {
         return 0; // everyone
+    }
+
+    @Override
+    public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args,
+            BlockPos targetPos) {
+        if (args.length == 1) {
+            return getListOfStringsMatchingLastWord(args,
+                    Arrays.asList("1v1", "2v2", "3v3", "leave", "forfeit", "stats", "top"));
+        }
+
+        return Collections.emptyList();
     }
 
     @Override

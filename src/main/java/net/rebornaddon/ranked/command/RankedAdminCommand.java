@@ -6,11 +6,17 @@ import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.rebornaddon.ranked.RankedLocation;
 import net.rebornaddon.ranked.RankedSystem;
 import net.rebornaddon.ranked.arena.Arena;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 public class RankedAdminCommand extends CommandBase {
 
@@ -27,6 +33,36 @@ public class RankedAdminCommand extends CommandBase {
     @Override
     public int getRequiredPermissionLevel() {
         return 2; // op level, same as the original plugin.yml permission default
+    }
+
+    @Override
+    public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args,
+            BlockPos targetPos) {
+        if (args.length == 1) {
+            return getListOfStringsMatchingLastWord(args, Arrays.asList("pos1", "pos2", "create", "addspawn",
+                    "clearspawns", "resize", "list", "remove", "forceend", "setloserspawn"));
+        }
+
+        if (args.length == 2) {
+            String subcommand = args[0].toLowerCase();
+            if ("addspawn".equals(subcommand) || "clearspawns".equals(subcommand) || "resize".equals(subcommand)
+                    || "remove".equals(subcommand)) {
+                return getListOfStringsMatchingLastWord(args, arenaIds());
+            }
+
+            if ("forceend".equals(subcommand)) {
+                return getListOfStringsMatchingLastWord(args, server.getOnlinePlayerNames());
+            }
+        }
+
+        if (args.length == 3) {
+            String subcommand = args[0].toLowerCase();
+            if ("addspawn".equals(subcommand) || "clearspawns".equals(subcommand)) {
+                return getListOfStringsMatchingLastWord(args, "0", "1");
+            }
+        }
+
+        return Collections.emptyList();
     }
 
     @Override
@@ -198,5 +234,17 @@ public class RankedAdminCommand extends CommandBase {
 
     private TextComponentString msg(String s) {
         return new TextComponentString(s);
+    }
+
+    private static List<String> arenaIds() {
+        if (RankedSystem.arenaManager == null) {
+            return Collections.emptyList();
+        }
+
+        List<String> ids = new ArrayList<String>();
+        for (Arena arena : RankedSystem.arenaManager.all()) {
+            ids.add(arena.id);
+        }
+        return ids;
     }
 }

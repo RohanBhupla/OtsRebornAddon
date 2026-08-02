@@ -4,11 +4,13 @@ import net.minecraft.command.CommandBase;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
 import net.rebornaddon.village.LuckPermsBridge;
 import net.rebornaddon.village.VillageSelectionHandler;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 public class LuckPermsStatusCommand extends CommandBase {
@@ -30,6 +32,20 @@ public class LuckPermsStatusCommand extends CommandBase {
     @Override
     public int getRequiredPermissionLevel() {
         return 2;
+    }
+
+    @Override
+    public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args,
+            BlockPos targetPos) {
+        if (args.length == 1) {
+            return getListOfStringsMatchingLastWord(args, "reset");
+        }
+
+        if (args.length == 2 && "reset".equalsIgnoreCase(args[0])) {
+            return getListOfStringsMatchingLastWord(args, server.getOnlinePlayerNames());
+        }
+
+        return Collections.emptyList();
     }
 
     @Override

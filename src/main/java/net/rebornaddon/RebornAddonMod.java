@@ -16,6 +16,7 @@ import net.rebornaddon.compat.NarutoLearnerDropProtectionHandler;
 import net.rebornaddon.compat.NarutoProgressionHandler;
 import net.rebornaddon.compat.ShinobiAddonRestrictionHandler;
 import net.rebornaddon.compat.ShinobiAddonPerformancePatch;
+import net.rebornaddon.compat.ShinobiStatRemovalHandler;
 import net.rebornaddon.compat.VariedCommoditiesRecipePatch;
 import net.rebornaddon.command.CreatorCreditsCommand;
 import net.rebornaddon.command.LuckPermsStatusCommand;
@@ -61,6 +62,7 @@ public class RebornAddonMod {
     public void init(FMLInitializationEvent event) {
         proxy.init();
         MinecraftForge.EVENT_BUS.register(ShinobiAddonRestrictionHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(ShinobiStatRemovalHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(NarutoLearnerDropProtectionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(NarutoProgressionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(FireDurationLimiter.INSTANCE);

@@ -65,7 +65,7 @@ public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
 
         addStack(stacks, seen, new ItemStack(item));
         addStack(stacks, seen, new ItemStack(item, 1, OreDictionary.WILDCARD_VALUE));
-        for (int meta = 0; meta <= 15; meta++) {
+        for (int meta = 0; meta <= 64; meta++) {
             addStack(stacks, seen, new ItemStack(item, 1, meta));
         }
 

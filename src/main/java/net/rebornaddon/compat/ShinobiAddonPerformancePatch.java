@@ -12,8 +12,12 @@ import java.util.Set;
 
 public final class ShinobiAddonPerformancePatch {
     private static final Set<String> EVENT_HANDLERS = new HashSet<String>(Arrays.asList(
+            "com.leolifeless.shinobiaddon.client.overlay.PlayerStatSheetOverlay",
+            "com.leolifeless.shinobiaddon.handler.taijutsu.CombatTrainingBooster",
+            "com.leolifeless.shinobiaddon.handler.taijutsu.TrainingWeightsHandler",
             "com.leolifeless.shinobiaddon.handler.steel.PlayerSteelArmorHandler",
-            "com.leolifeless.shinobiaddon.handler.steel.NpcSteelArmorHandler"
+            "com.leolifeless.shinobiaddon.handler.steel.NpcSteelArmorHandler",
+            "com.leolifeless.shinobiaddon.stats.NinjaStatHandler"
     ));
 
     private ShinobiAddonPerformancePatch() {
