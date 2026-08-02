@@ -17,10 +17,6 @@ public class CreatorCreditsCommand extends CommandBase {
         return "reborncredits";
     }
 
-    public String func_71517_b() {
-        return getName();
-    }
-
     @Override
     public List<String> getAliases() {
         return Arrays.asList("modcredits", "credits");
@@ -29,10 +25,6 @@ public class CreatorCreditsCommand extends CommandBase {
     @Override
     public String getUsage(ICommandSender sender) {
         return "/reborncredits";
-    }
-
-    public String func_71518_a(ICommandSender sender) {
-        return getUsage(sender);
     }
 
     @Override
@@ -48,9 +40,5 @@ public class CreatorCreditsCommand extends CommandBase {
         }
 
         RebornAddonNetwork.openCreatorCreditsGui((EntityPlayerMP) sender);
-    }
-
-    public void func_184881_a(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
-        execute(server, sender, args);
     }
 }

@@ -1,7 +1,6 @@
 package net.rebornaddon.command;
 
 import net.minecraft.command.CommandBase;
-import net.minecraft.command.CommandException;
 import net.minecraft.command.ICommandSender;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
@@ -18,10 +17,6 @@ public class LuckPermsStatusCommand extends CommandBase {
         return "rebornlp";
     }
 
-    public String func_71517_b() {
-        return getName();
-    }
-
     @Override
     public List<String> getAliases() {
         return Arrays.asList("rebornluckperms", "rlp");
@@ -30,10 +25,6 @@ public class LuckPermsStatusCommand extends CommandBase {
     @Override
     public String getUsage(ICommandSender sender) {
         return "/rebornlp [reset [player]]";
-    }
-
-    public String func_71518_a(ICommandSender sender) {
-        return getUsage(sender);
     }
 
     @Override
@@ -67,9 +58,5 @@ public class LuckPermsStatusCommand extends CommandBase {
         sender.sendMessage(new TextComponentString("Bukkit plugin: " + bridge.hasBukkitPlugin()));
         sender.sendMessage(new TextComponentString("Village groups: stone, leaf, cloud, sand, mist"));
         sender.sendMessage(new TextComponentString("Reset command: /rebornlp reset [player]"));
-    }
-
-    public void func_184881_a(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
-        execute(server, sender, args);
     }
 }
