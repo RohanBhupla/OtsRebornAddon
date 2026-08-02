@@ -1,12 +1,25 @@
 package net.rebornaddon;
 
+import net.minecraft.command.ICommand;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLPostInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
+import net.rebornaddon.compat.FireDurationLimiter;
+import net.rebornaddon.compat.NarutoPortalTileEntityPatch;
+import net.rebornaddon.compat.NarutoLearnerDropProtectionHandler;
+import net.rebornaddon.compat.NarutoProgressionHandler;
+import net.rebornaddon.compat.ShinobiAddonRestrictionHandler;
+import net.rebornaddon.compat.ShinobiAddonPerformancePatch;
+import net.rebornaddon.compat.VariedCommoditiesRecipePatch;
+import net.rebornaddon.command.CreatorCreditsCommand;
+import net.rebornaddon.command.LuckPermsStatusCommand;
+import net.rebornaddon.credits.CreatorCreditsHandler;
 import net.rebornaddon.proxy.CommonProxy;
 import net.rebornaddon.ranked.RankedSystem;
 import net.rebornaddon.ranked.arena.ArenaManager;
@@ -17,21 +30,14 @@ import net.rebornaddon.ranked.event.RankedEventHandler;
 import net.rebornaddon.ranked.match.MatchManager;
 import net.rebornaddon.ranked.network.RankedNetwork;
 import net.rebornaddon.ranked.queue.QueueManager;
+import net.rebornaddon.village.VillageSelectionHandler;
+import net.rebornaddon.village.network.RebornAddonNetwork;
 
 import java.io.File;
 
-/**
- * Everything - hub GUI and the full ranked match system - lives in this one mod now.
- * The ranked system itself (RankedSystem, arena/queue/match/elo managers) is entirely
- * server-side logic using Forge's own APIs; the hub GUI talks to it over real network
- * packets (see the ranked.network package) instead of the old scoreboard-polling
- * bridge, since both ends are the same mod now.
- *
- * This class itself must NEVER reference any client-only class (GuiScreen, KeyBinding,
- * etc.) directly - see CommonProxy/ClientProxy for why.
- */
+
 @Mod(modid = RebornAddonMod.MODID, name = RebornAddonMod.NAME, version = RebornAddonMod.VERSION,
-        dependencies = "after:narutomod", acceptableRemoteVersions = "*")
+        dependencies = "after:narutomod;after:shinobiaddon;after:ftbquests;after:customnpcs", acceptableRemoteVersions = "*")
 public class RebornAddonMod {
 
     public static final String MODID = "rebornaddon";
@@ -46,22 +52,38 @@ public class RebornAddonMod {
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
         proxy.preInit();
+        MinecraftForge.EVENT_BUS.register(VariedCommoditiesRecipePatch.INSTANCE);
         RankedNetwork.init();
+        RebornAddonNetwork.init(event.getSide());
     }
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
         proxy.init();
+        MinecraftForge.EVENT_BUS.register(ShinobiAddonRestrictionHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(NarutoLearnerDropProtectionHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(NarutoProgressionHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(FireDurationLimiter.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(VillageSelectionHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(CreatorCreditsHandler.INSTANCE);
+        registerClientVisibilityHandler(event);
+        ShinobiAddonPerformancePatch.apply();
+        NarutoProgressionHandler.apply();
     }
 
-    /**
-     * Fires whenever a server actually starts (dedicated server, or an integrated
-     * singleplayer server) - this is where the ranked system's managers get created
-     * and commands registered, since it needs an actual server instance to know
-     * where to store data and to register commands against.
-     */
+    @Mod.EventHandler
+    public void postInit(FMLPostInitializationEvent event) {
+        NarutoPortalTileEntityPatch.apply();
+        ShinobiAddonPerformancePatch.apply();
+        NarutoProgressionHandler.apply();
+    }
+
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
+        NarutoPortalTileEntityPatch.apply();
+        ShinobiAddonPerformancePatch.apply();
+        NarutoProgressionHandler.apply();
+
         File dataDir = new File(event.getServer().getDataDirectory(), "rebornaddon_ranked");
 
         RankedSystem.arenaManager = new ArenaManager(dataDir);
@@ -71,9 +93,42 @@ public class RebornAddonMod {
 
         event.registerServerCommand(new RankedAdminCommand());
         event.registerServerCommand(new RankedCommand());
+        event.registerServerCommand(new LuckPermsStatusCommand());
+        event.registerServerCommand(new CreatorCreditsCommand());
+        registerCustomNpcQuestImportCommand(event);
 
         rankedEventHandler = new RankedEventHandler();
         MinecraftForge.EVENT_BUS.register(rankedEventHandler);
+    }
+
+    private void registerCustomNpcQuestImportCommand(FMLServerStartingEvent event) {
+        if (!Loader.isModLoaded("ftbquests") || !Loader.isModLoaded("customnpcs")) {
+            return;
+        }
+
+        try {
+            Class<?> commandClass = Class.forName("net.rebornaddon.command.CustomNpcQuestImportCommand");
+            event.registerServerCommand((ICommand) commandClass.getConstructor().newInstance());
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void registerClientVisibilityHandler(FMLInitializationEvent event) {
+        if (!event.getSide().isClient()) {
+            return;
+        }
+
+        try {
+            Class<?> handlerClass = Class.forName("net.rebornaddon.compat.client.ShinobiAddonCreativeVisibilityHandler");
+            MinecraftForge.EVENT_BUS.register(handlerClass.getField("INSTANCE").get(null));
+        } catch (Exception ignored) {
+        }
+
+        try {
+            Class<?> handlerClass = Class.forName("net.rebornaddon.credits.client.JoinCreditMessageFilter");
+            MinecraftForge.EVENT_BUS.register(handlerClass.getField("INSTANCE").get(null));
+        } catch (Exception ignored) {
+        }
     }
 
     @Mod.EventHandler

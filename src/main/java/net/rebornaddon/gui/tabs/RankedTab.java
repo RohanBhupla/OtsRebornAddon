@@ -6,7 +6,6 @@ import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.rebornaddon.data.RankedClientData;
-import net.rebornaddon.ranked.elo.RankTier;
 import net.rebornaddon.ranked.match.MatchMode;
 import net.rebornaddon.ranked.network.QueueActionMessage;
 import net.rebornaddon.ranked.network.RankedNetwork;
@@ -16,14 +15,8 @@ import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
-/**
- * Left side: battle actions (queue/leave/forfeit). Right side: your stats and
- * the leaderboard, shown together (no toggle) so there's always a clear split
- * and nothing overlaps regardless of window size.
- */
 public class RankedTab implements HubTab {
 
-    // Reserved button ID range for this tab: 100-199
     private static final int BTN_QUEUE_1V1 = 100;
     private static final int BTN_QUEUE_2V2 = 101;
     private static final int BTN_QUEUE_3V3 = 102;
@@ -35,7 +28,6 @@ public class RankedTab implements HubTab {
 
     private String statusMessage = "";
     private long statusMessageExpireAt = 0;
-    private long forfeitArmedUntil = 0; // 0 = not armed; otherwise a click-again window
 
     @Override
     public String getTabName() {
@@ -77,11 +69,8 @@ public class RankedTab implements HubTab {
         y += btnH + gap;
 
         if (inMatch) {
-            boolean armed = forfeitArmedUntil > System.currentTimeMillis();
-            String label = armed ? "Confirm Forfeit?" : "Forfeit Match";
-            int bg = armed ? 0xFFE05A4B : Theme.DANGER;
-            int hover = armed ? 0xFFFF7A6B : 0xFFE05A4B;
-            buttonList.add(new ThemedButton(BTN_FORFEIT, x, y, btnW, btnH, label, bg, hover, Theme.BUTTON_TEXT));
+            buttonList.add(new ThemedButton(BTN_FORFEIT, x, y, btnW, btnH, "Forfeit Match",
+                    Theme.DANGER, 0xFFE05A4B, Theme.BUTTON_TEXT));
         }
     }
 
@@ -105,15 +94,8 @@ public class RankedTab implements HubTab {
                 showStatus("Left queue");
                 return true;
             case BTN_FORFEIT:
-                long now = System.currentTimeMillis();
-                if (forfeitArmedUntil > now) {
-                    RankedNetwork.CHANNEL.sendToServer(new QueueActionMessage(QueueActionMessage.ACTION_FORFEIT, 0));
-                    forfeitArmedUntil = 0;
-                    showStatus("Forfeited match");
-                } else {
-                    forfeitArmedUntil = now + 3000L;
-                    showStatus("Click Forfeit again within 3s to confirm");
-                }
+                RankedNetwork.CHANNEL.sendToServer(new QueueActionMessage(QueueActionMessage.ACTION_FORFEIT, 0));
+                showStatus("Forfeited match");
                 return true;
             default:
                 return false;
@@ -132,9 +114,8 @@ public class RankedTab implements HubTab {
         int rightColX = left + LEFT_COL_WIDTH + COLUMN_GAP;
         int rightColWidth = width - LEFT_COL_WIDTH - COLUMN_GAP;
 
-        // Vertical divider between the two columns
         int dividerX = left + LEFT_COL_WIDTH + COLUMN_GAP / 2;
-        Gui.drawRect(dividerX, top, dividerX + 1, top + height, Theme.PURPLE_LIGHT);
+        Gui.drawRect(dividerX, top, dividerX + 1, top + height, Theme.GOLD_DARK);
 
         drawStatsAndLeaderboard(fr, rightColX, top, rightColWidth, height);
 
@@ -151,8 +132,6 @@ public class RankedTab implements HubTab {
         int wins = RankedClientData.getWins();
         int losses = RankedClientData.getLosses();
         int draws = RankedClientData.getDraws();
-        int winStreak = RankedClientData.getWinStreak();
-        int peakElo = RankedClientData.getPeakElo();
         boolean inMatch = RankedClientData.amIInMatch();
 
         int centerX = left + width / 2;
@@ -161,10 +140,7 @@ public class RankedTab implements HubTab {
         drawCentered(fr, "\u00a77Your ELO", centerX, y, Theme.TEXT_MUTED);
         y += 12;
         drawCenteredScaled(fr, String.valueOf(elo), centerX, y, Theme.RANKED_RED_HOVER, 1.6f);
-        y += 22;
-
-        drawCentered(fr, RankTier.forElo(elo), centerX, y, RankTier.colorForElo(elo));
-        y += 14;
+        y += 24;
 
         String record = wins + "W  -  " + losses + "L  -  " + draws + "D";
         drawCentered(fr, record, centerX, y, Theme.TEXT_LIGHT);
@@ -173,13 +149,6 @@ public class RankedTab implements HubTab {
         double totalGames = wins + losses + draws;
         String winRate = totalGames > 0 ? String.format("%.1f%% win rate", (wins / totalGames) * 100.0) : "No matches played yet";
         drawCentered(fr, "\u00a77" + winRate, centerX, y, Theme.TEXT_MUTED);
-        y += 12;
-
-        if (winStreak >= 2) {
-            drawCentered(fr, "\u00a7c\u00a7l" + winStreak + " win streak!", centerX, y, Theme.SUCCESS);
-            y += 12;
-        }
-        drawCentered(fr, "\u00a77Peak ELO: " + peakElo, centerX, y, Theme.TEXT_MUTED);
         y += 14;
 
         if (inMatch) {
@@ -187,20 +156,14 @@ public class RankedTab implements HubTab {
             y += 14;
         }
 
-        String queuedLabel = RankedClientData.getQueuedModeLabel();
-        if (queuedLabel != null) {
-            drawCentered(fr, "\u00a7eIn queue for " + queuedLabel, centerX, y, Theme.RANKED_RED_HOVER);
-            y += 14;
-        }
-
-        y += 2;
+        y += 4;
         Gui.drawRect(left, y, left + width, y + 1, Theme.PURPLE_LIGHT);
-        y += 8;
+        y += 10;
 
         drawCentered(fr, "\u00a7fLeaderboard", centerX, y, Theme.TEXT_LIGHT);
         y += 14;
 
-        List<RankedClientData.LeaderboardEntry> entries = RankedClientData.getLeaderboard(6);
+        List<RankedClientData.LeaderboardEntry> entries = RankedClientData.getLeaderboard(8);
         if (entries.isEmpty()) {
             drawCentered(fr, "\u00a77No leaderboard data yet", centerX, y, Theme.TEXT_MUTED);
             return;
