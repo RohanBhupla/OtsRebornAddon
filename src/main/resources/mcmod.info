@@ -1,0 +1,14 @@
+[
+  {
+    "modid": "rebornaddon",
+    "name": "RebornAddon",
+    "description": "Standalone hub GUI for Ranked Duels and future features. Loads after narutomod if present, but works fine without it.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "authorList": ["Rohan"],
+    "credits": "",
+    "logoFile": "",
+    "screenshots": [],
+    "dependencies": []
+  }
+]

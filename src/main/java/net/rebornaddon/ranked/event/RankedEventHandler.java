@@ -1,0 +1,187 @@
+package net.rebornaddon.ranked.event;
+
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.living.LivingDropsEvent;
+import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.PlayerEvent;
+import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.rebornaddon.ranked.RankedLocation;
+import net.rebornaddon.ranked.RankedSystem;
+import net.rebornaddon.ranked.elo.PlayerStats;
+import net.rebornaddon.ranked.match.MatchManager;
+import net.rebornaddon.ranked.network.RankedNetwork;
+import net.rebornaddon.ranked.network.RankedSyncMessage;
+import net.rebornaddon.ranked.queue.ProposedMatch;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
+/**
+ * The server-side glue between actual Forge events and MatchManager/QueueManager.
+ * MatchManager itself has no event dependencies at all - this class is the only
+ * thing that knows about LivingDeathEvent, PlayerRespawnEvent, etc., and just calls
+ * straight into the manager methods.
+ */
+public class RankedEventHandler {
+
+    private int tickCounter = 0;
+
+    // Players whose respawn needs finalizing (gamemode/inventory/teleport) on the
+    // NEXT tick after they actually respawn - mirrors the original plugin's "don't
+    // touch a dead player" fix, adapted since Forge has no scheduleSyncDelayedTask.
+    private final Set<UUID> pendingFinalizeNextTick = new HashSet<>();
+
+    @SubscribeEvent
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        if (!RankedSystem.isReady()) return;
+
+        MatchManager matchManager = RankedSystem.matchManager;
+
+        // Finalize any respawns queued up from last tick, now that the respawn itself
+        // has actually completed.
+        if (!pendingFinalizeNextTick.isEmpty()) {
+            for (UUID uuid : new ArrayList<>(pendingFinalizeNextTick)) {
+                matchManager.finalizePendingRespawn(uuid);
+            }
+            pendingFinalizeNextTick.clear();
+        }
+
+        // Boundary/countdown-freeze check every tick for every match participant.
+        for (EntityPlayerMP p : net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                .getMinecraftServerInstance().getPlayerList().getPlayers()) {
+            if (matchManager.isInMatch(p.getUniqueID())) {
+                matchManager.tickPlayerBoundary(p);
+            }
+        }
+
+        tickCounter++;
+        if (tickCounter >= 20) {
+            tickCounter = 0;
+            matchManager.tickSecond();
+
+            for (ProposedMatch proposal : RankedSystem.queueManager.tick()) {
+                boolean started = matchManager.startMatch(proposal);
+                if (!started) {
+                    // No free arena right now - requeue everyone rather than losing their spot,
+                    // and actually tell them why nothing happened instead of leaving them guessing.
+                    for (net.rebornaddon.ranked.queue.QueuedPlayer qp : proposal.getTeam0()) {
+                        RankedSystem.queueManager.join(proposal.getMode(), qp.getUuid(), qp.getName(), qp.getElo());
+                    }
+                    for (net.rebornaddon.ranked.queue.QueuedPlayer qp : proposal.getTeam1()) {
+                        RankedSystem.queueManager.join(proposal.getMode(), qp.getUuid(), qp.getName(), qp.getElo());
+                    }
+
+                    java.util.List<net.rebornaddon.ranked.queue.QueuedPlayer> all = new ArrayList<>(proposal.getTeam0());
+                    all.addAll(proposal.getTeam1());
+                    for (net.rebornaddon.ranked.queue.QueuedPlayer qp : all) {
+                        EntityPlayerMP p = net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                                .getMinecraftServerInstance().getPlayerList().getPlayerByUUID(qp.getUuid());
+                        if (p != null) {
+                            p.sendMessage(new net.minecraft.util.text.TextComponentString(
+                                    net.minecraft.util.text.TextFormatting.RED
+                                    + "A match was found but no arena is free right now - you've been re-queued."));
+                        }
+                    }
+                }
+            }
+
+            syncAllPlayers();
+        }
+    }
+
+    private void syncAllPlayers() {
+        List<PlayerStats> top = RankedSystem.eloManager.getTop(10);
+        List<String> names = new ArrayList<>();
+        List<Integer> elos = new ArrayList<>();
+        for (PlayerStats s : top) {
+            names.add(s.name);
+            elos.add(s.elo);
+        }
+
+        for (EntityPlayerMP p : net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                .getMinecraftServerInstance().getPlayerList().getPlayers()) {
+            PlayerStats stats = RankedSystem.eloManager.getStats(p.getUniqueID(), p.getName());
+            int state;
+            int queuedModeNetId = -1;
+            if (RankedSystem.matchManager.isInMatch(p.getUniqueID())) {
+                state = 2;
+            } else {
+                net.rebornaddon.ranked.match.MatchMode queuedMode = RankedSystem.queueManager.getQueuedMode(p.getUniqueID());
+                if (queuedMode != null) {
+                    state = 1;
+                    queuedModeNetId = queuedMode.getNetId();
+                } else {
+                    state = 0;
+                }
+            }
+
+            RankedNetwork.CHANNEL.sendTo(new RankedSyncMessage(stats.elo, stats.wins, stats.losses,
+                    stats.draws, stats.currentWinStreak, stats.peakElo, state, queuedModeNetId, names, elos), p);
+        }
+    }
+
+    @SubscribeEvent
+    public void onLivingDeath(LivingDeathEvent event) {
+        if (!(event.getEntity() instanceof EntityPlayer)) return;
+        if (!RankedSystem.isReady()) return;
+        UUID uuid = event.getEntity().getUniqueID();
+        if (!RankedSystem.matchManager.isInMatch(uuid)) return;
+
+        RankedSystem.matchManager.onPlayerDeath(uuid);
+        // Don't force an instant respawn - let the normal death screen/animation play,
+        // same reasoning as the original plugin. PlayerRespawnEvent below redirects
+        // where they land once they actually respawn.
+    }
+
+    @SubscribeEvent
+    public void onLivingDrops(LivingDropsEvent event) {
+        if (!(event.getEntity() instanceof EntityPlayer)) return;
+        if (!RankedSystem.isReady()) return;
+        if (RankedSystem.matchManager.isInMatch(event.getEntity().getUniqueID())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public void onLivingHurt(LivingHurtEvent event) {
+        if (!(event.getEntity() instanceof EntityPlayer)) return;
+        if (!RankedSystem.isReady()) return;
+        if (RankedSystem.matchManager.shouldBlockDamage(event.getEntity().getUniqueID())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
+        if (!RankedSystem.isReady()) return;
+        UUID uuid = event.player.getUniqueID();
+        RankedLocation redirect = RankedSystem.matchManager.getPendingRespawnLocation(uuid);
+        if (redirect == null) return;
+
+        if (event.player instanceof EntityPlayerMP) {
+            EntityPlayerMP p = (EntityPlayerMP) event.player;
+            if (p.dimension != redirect.dimensionId) {
+                p.changeDimension(redirect.dimensionId);
+            }
+            p.connection.setPlayerLocation(redirect.x, redirect.y, redirect.z, redirect.yaw, redirect.pitch);
+        }
+
+        // Finalize gamemode/inventory next tick, once the respawn has actually completed.
+        pendingFinalizeNextTick.add(uuid);
+    }
+
+    @SubscribeEvent
+    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (!RankedSystem.isReady()) return;
+        UUID uuid = event.player.getUniqueID();
+        RankedSystem.queueManager.leaveAll(uuid);
+        RankedSystem.matchManager.onPlayerQuit(uuid);
+    }
+}

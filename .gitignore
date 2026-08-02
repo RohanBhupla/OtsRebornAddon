@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# ForgeGradle-specific (decompiled Minecraft source, run directory, etc.)
+run/
+eclipse/
+forgeSrc-*.zip
+build.log
+
+# IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
