@@ -19,9 +19,13 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import noppes.npcs.CustomNpcs;
 import noppes.npcs.NpcMiscInventory;
+import noppes.npcs.constants.EnumAvailabilityDialog;
+import noppes.npcs.constants.EnumAvailabilityQuest;
 import noppes.npcs.controllers.DialogController;
 import noppes.npcs.controllers.QuestController;
+import noppes.npcs.controllers.data.Availability;
 import noppes.npcs.controllers.data.Dialog;
+import noppes.npcs.controllers.data.DialogOption;
 import noppes.npcs.controllers.data.FactionOptions;
 import noppes.npcs.controllers.data.PlayerMail;
 import noppes.npcs.quests.QuestDialog;
@@ -53,6 +57,7 @@ public final class CustomNpcQuestImporter {
     private static final String TAG_QUEST_PREFIX = "customnpc_quest_";
     private static final String TAG_REWARD_PREFIX = "customnpc_reward_";
     private static final String[] RANKS = {"D", "C", "B", "A", "S"};
+    private static final String[] RANK_CONTEXTS = {"RANK", "RANKS", "MISSION", "MISSIONS", "QUEST", "QUESTS", "CLASS", "TIER"};
     private static final Pattern[] RANK_PATTERNS = new Pattern[RANKS.length];
 
     static {
@@ -92,8 +97,9 @@ public final class CustomNpcQuestImporter {
         for (noppes.npcs.controllers.data.Quest npcQuest : npcQuests) {
             result.scanned++;
 
+            Quest existing = ftbByNpcQuest.get(Integer.valueOf(npcQuest.id));
             String rank = getRank(npcQuest);
-            if (rank == null) {
+            if (rank == null && existing == null) {
                 result.skipped++;
                 continue;
             }
@@ -105,11 +111,11 @@ public final class CustomNpcQuestImporter {
                 }
             }
 
-            Quest existing = ftbByNpcQuest.get(Integer.valueOf(npcQuest.id));
             if (existing != null) {
                 importedByNpcQuest.put(Integer.valueOf(npcQuest.id), existing);
                 result.existing++;
                 if (!preview) {
+                    syncImportedQuest(file, existing, npcQuest, dialogController, result);
                     result.rewards += addRewards(file, existing, npcQuest, result);
                 }
                 continue;
@@ -124,12 +130,13 @@ public final class CustomNpcQuestImporter {
             Chapter chapter = getOrCreateChapter(file, rank, result);
             Quest ftbQuest = createQuest(file, chapter, npcQuest, dialogController);
             importedByNpcQuest.put(Integer.valueOf(npcQuest.id), ftbQuest);
+            ensureNpcQuestTask(file, ftbQuest, npcQuest, result);
             result.dialogTasks += addDialogTasks(file, ftbQuest, npcQuest, dialogController);
             result.rewards += addRewards(file, ftbQuest, npcQuest, result);
         }
 
         if (!preview) {
-            result.dependencies = applyDependencies(npcQuests, importedByNpcQuest);
+            result.dependencies = applyDependencies(npcQuests, importedByNpcQuest, dialogController);
 
             if (!keepCustomNpcRewards && !rewardStripCandidates.isEmpty()) {
                 try {
@@ -146,7 +153,9 @@ public final class CustomNpcQuestImporter {
             }
 
             if (result.imported > 0 || result.dependencies > 0 || result.chaptersCreated > 0
-                    || result.rewards > 0 || result.rewardTables > 0 || result.customNpcRewardsCleared > 0) {
+                    || result.rewards > 0 || result.rewardTables > 0 || result.customNpcRewardsCleared > 0
+                    || result.dialogTasks > 0 || result.questTasks > 0 || result.questsUpdated > 0
+                    || result.descriptionsUpdated > 0) {
                 file.refreshIDMap();
                 file.save();
                 file.saveNow();
@@ -156,22 +165,99 @@ public final class CustomNpcQuestImporter {
         return result;
     }
 
+    private static void syncImportedQuest(ServerQuestFile file, Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
+                                          DialogController dialogController, Result result) {
+        if (syncQuestBasics(ftbQuest, npcQuest, dialogController, result)) {
+            result.questsUpdated++;
+        }
+
+        ensureNpcQuestTask(file, ftbQuest, npcQuest, result);
+        result.dialogTasks += addDialogTasks(file, ftbQuest, npcQuest, dialogController);
+    }
+
     private static Quest createQuest(ServerQuestFile file, Chapter chapter, noppes.npcs.controllers.data.Quest npcQuest,
                                      DialogController dialogController) {
         Quest ftbQuest = new Quest(chapter);
         ftbQuest.id = file.newID();
-        ftbQuest.title = clean(npcQuest.title, "CustomNPCs Quest " + npcQuest.id);
-        ftbQuest.subtitle = npcQuest.category == null ? "" : clean(npcQuest.category.title, "");
         ftbQuest.icon = ItemStack.EMPTY;
         ftbQuest.shape = QuestShape.CIRCLE;
-        ftbQuest.canRepeat = npcQuest.getIsRepeatable();
         ftbQuest.x = (chapter.quests.size() % 6) * 2.0D;
         ftbQuest.y = (chapter.quests.size() / 6) * 2.0D;
-        ftbQuest.description.addAll(buildDescription(npcQuest, dialogController));
-        ftbQuest.getTags().add(TAG_SOURCE);
-        ftbQuest.getTags().add(TAG_QUEST_PREFIX + npcQuest.id);
+        syncQuestBasics(ftbQuest, npcQuest, dialogController, null);
         ftbQuest.onCreated();
         file.refreshIDMap();
+
+        return ftbQuest;
+    }
+
+    private static boolean syncQuestBasics(Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
+                                           DialogController dialogController, Result result) {
+        boolean changed = false;
+        String title = clean(npcQuest.title, "CustomNPCs Quest " + npcQuest.id);
+        String subtitle = npcQuest.category == null ? "" : clean(npcQuest.category.title, "");
+
+        if (!title.equals(ftbQuest.title)) {
+            ftbQuest.title = title;
+            changed = true;
+        }
+
+        if (!subtitle.equals(ftbQuest.subtitle)) {
+            ftbQuest.subtitle = subtitle;
+            changed = true;
+        }
+
+        boolean canRepeat = npcQuest.getIsRepeatable();
+        if (ftbQuest.canRepeat != canRepeat) {
+            ftbQuest.canRepeat = canRepeat;
+            changed = true;
+        }
+
+        List<String> description = buildDescription(npcQuest, dialogController);
+        if (!ftbQuest.description.equals(description)) {
+            ftbQuest.description.clear();
+            ftbQuest.description.addAll(description);
+            if (result != null) {
+                result.descriptionsUpdated++;
+            }
+            changed = true;
+        }
+
+        if (!ftbQuest.getTags().contains(TAG_SOURCE)) {
+            ftbQuest.getTags().add(TAG_SOURCE);
+            changed = true;
+        }
+
+        String questTag = TAG_QUEST_PREFIX + npcQuest.id;
+        if (!ftbQuest.getTags().contains(questTag)) {
+            ftbQuest.getTags().add(questTag);
+            changed = true;
+        }
+
+        if (changed) {
+            ftbQuest.clearCachedData();
+        }
+
+        return changed;
+    }
+
+    private static void ensureNpcQuestTask(ServerQuestFile file, Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
+                                           Result result) {
+        for (Task task : ftbQuest.tasks) {
+            if (!(task instanceof NPCQuestTask)) {
+                continue;
+            }
+
+            NPCQuestTask questTask = (NPCQuestTask) task;
+            if (questTask.npcQuest == npcQuest.id) {
+                if (!"Complete CustomNPCs quest".equals(questTask.title) || questTask.checkActive) {
+                    questTask.title = "Complete CustomNPCs quest";
+                    questTask.checkActive = false;
+                    ftbQuest.clearCachedData();
+                    result.questsUpdated++;
+                }
+                return;
+            }
+        }
 
         NPCQuestTask questTask = new NPCQuestTask(ftbQuest);
         questTask.id = file.newID();
@@ -180,16 +266,19 @@ public final class CustomNpcQuestImporter {
         questTask.checkActive = false;
         questTask.onCreated();
         file.refreshIDMap();
-
-        return ftbQuest;
+        result.questTasks++;
     }
 
     private static int addDialogTasks(ServerQuestFile file, Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
                                       DialogController dialogController) {
         int count = 0;
 
-        for (Integer dialogId : getRequiredDialogIds(npcQuest)) {
+        for (Integer dialogId : getRequiredDialogIds(npcQuest, dialogController)) {
             if (dialogId == null || dialogId.intValue() <= 0) {
+                continue;
+            }
+
+            if (hasDialogTask(ftbQuest, dialogId.intValue())) {
                 continue;
             }
 
@@ -204,6 +293,16 @@ public final class CustomNpcQuestImporter {
         }
 
         return count;
+    }
+
+    private static boolean hasDialogTask(Quest ftbQuest, int dialogId) {
+        for (Task task : ftbQuest.tasks) {
+            if (task instanceof NPCDialogTask && ((NPCDialogTask) task).npcDialog == dialogId) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int addRewards(ServerQuestFile file, Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
@@ -413,24 +512,74 @@ public final class CustomNpcQuestImporter {
         return chapter;
     }
 
-    private static int applyDependencies(List<noppes.npcs.controllers.data.Quest> npcQuests, Map<Integer, Quest> ftbByNpcQuest) {
+    private static int applyDependencies(List<noppes.npcs.controllers.data.Quest> npcQuests, Map<Integer, Quest> ftbByNpcQuest,
+                                         DialogController dialogController) {
         int count = 0;
 
         for (noppes.npcs.controllers.data.Quest npcQuest : npcQuests) {
-            if (npcQuest.nextQuestid <= 0) {
+            if (npcQuest.nextQuestid > 0) {
+                count += addDependency(ftbByNpcQuest, npcQuest.nextQuestid, npcQuest.id);
+            }
+
+            Quest target = ftbByNpcQuest.get(Integer.valueOf(npcQuest.id));
+            if (target == null) {
                 continue;
             }
 
-            Quest current = ftbByNpcQuest.get(Integer.valueOf(npcQuest.id));
-            Quest next = ftbByNpcQuest.get(Integer.valueOf(npcQuest.nextQuestid));
-
-            if (current != null && next != null && current != next && !next.dependencies.contains(current)) {
-                next.dependencies.add(current);
-                count++;
+            for (Integer dialogId : getRequiredDialogIds(npcQuest, dialogController)) {
+                Dialog dialog = dialogId == null ? null : getDialog(dialogController, dialogId.intValue());
+                count += addAvailabilityQuestDependencies(ftbByNpcQuest, target, dialog == null ? null : dialog.availability);
             }
         }
 
         return count;
+    }
+
+    private static int addAvailabilityQuestDependencies(Map<Integer, Quest> ftbByNpcQuest, Quest target,
+                                                        Availability availability) {
+        if (availability == null) {
+            return 0;
+        }
+
+        int count = 0;
+        count += addAvailabilityQuestDependency(ftbByNpcQuest, target, availability.questId, availability.questAvailable);
+        count += addAvailabilityQuestDependency(ftbByNpcQuest, target, availability.quest2Id, availability.quest2Available);
+        count += addAvailabilityQuestDependency(ftbByNpcQuest, target, availability.quest3Id, availability.quest3Available);
+        count += addAvailabilityQuestDependency(ftbByNpcQuest, target, availability.quest4Id, availability.quest4Available);
+        return count;
+    }
+
+    private static int addAvailabilityQuestDependency(Map<Integer, Quest> ftbByNpcQuest, Quest target, int npcQuestId,
+                                                      EnumAvailabilityQuest type) {
+        if (!requiresCompletedQuest(type)) {
+            return 0;
+        }
+
+        return addDependency(ftbByNpcQuest, target, npcQuestId);
+    }
+
+    private static boolean requiresCompletedQuest(EnumAvailabilityQuest type) {
+        return type == EnumAvailabilityQuest.After || type == EnumAvailabilityQuest.Completed;
+    }
+
+    private static int addDependency(Map<Integer, Quest> ftbByNpcQuest, int targetNpcQuestId, int requiredNpcQuestId) {
+        Quest target = ftbByNpcQuest.get(Integer.valueOf(targetNpcQuestId));
+        return addDependency(ftbByNpcQuest, target, requiredNpcQuestId);
+    }
+
+    private static int addDependency(Map<Integer, Quest> ftbByNpcQuest, Quest target, int requiredNpcQuestId) {
+        if (target == null || requiredNpcQuestId <= 0) {
+            return 0;
+        }
+
+        Quest required = ftbByNpcQuest.get(Integer.valueOf(requiredNpcQuestId));
+        if (required == null || required == target || target.dependencies.contains(required)) {
+            return 0;
+        }
+
+        target.dependencies.add(required);
+        target.clearCachedData();
+        return 1;
     }
 
     private static Map<Integer, Quest> findExistingFtbQuests(ServerQuestFile file) {
@@ -494,43 +643,80 @@ public final class CustomNpcQuestImporter {
     }
 
     private static String getRank(noppes.npcs.controllers.data.Quest quest) {
-        if (quest.category == null) {
-            return null;
+        String rank = quest.category == null ? null : getRankFromText(quest.category.title);
+        if (rank != null) {
+            return rank;
         }
 
-        String title = clean(quest.category.title, "").toUpperCase(Locale.ROOT);
+        return getRankFromText(quest.title);
+    }
 
+    private static String getRankFromText(String text) {
+        String title = clean(text, "").toUpperCase(Locale.ROOT);
         for (int i = 0; i < RANKS.length; i++) {
             if (RANK_PATTERNS[i].matcher(title).find()) {
                 return RANKS[i];
             }
         }
 
+        String normalized = title.replaceAll("[^A-Z0-9]+", " ").trim();
+        if (normalized.isEmpty()) {
+            return null;
+        }
+
+        String[] tokens = normalized.split("\\s+");
+        for (String rank : RANKS) {
+            if (tokens.length == 1 && rank.equals(tokens[0])) {
+                return rank;
+            }
+
+            for (int i = 0; i < tokens.length; i++) {
+                if (rank.equals(tokens[i]) && hasRankContext(tokens, i)) {
+                    return rank;
+                }
+            }
+        }
+
         return null;
     }
 
+    private static boolean hasRankContext(String[] tokens, int index) {
+        return isRankContext(index > 0 ? tokens[index - 1] : null)
+                || isRankContext(index + 1 < tokens.length ? tokens[index + 1] : null);
+    }
+
+    private static boolean isRankContext(String token) {
+        if (token == null) {
+            return false;
+        }
+
+        for (String context : RANK_CONTEXTS) {
+            if (context.equals(token)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static boolean sameRankTitle(String title, String rank) {
-        String cleaned = clean(title, "").toUpperCase(Locale.ROOT);
-        return cleaned.equals(rank + "-RANK") || cleaned.equals(rank + " RANK") || cleaned.equals(rank + "_RANK");
+        return rank.equals(getRankFromText(title));
     }
 
     private static List<String> buildDescription(noppes.npcs.controllers.data.Quest quest, DialogController dialogController) {
         List<String> lines = new ArrayList<String>();
+        Set<Integer> dialogIds = getRequiredDialogIds(quest, dialogController);
         addTextBlock(lines, quest.logText);
-        addObjectiveLines(lines, quest);
-        addDialogLines(lines, quest, dialogController);
+        addObjectiveLines(lines, quest, dialogController, dialogIds);
+        addDialogLines(lines, dialogController, dialogIds);
         addMailLines(lines, quest);
         addCompletionLines(lines, quest);
         return lines;
     }
 
-    private static void addObjectiveLines(List<String> lines, noppes.npcs.controllers.data.Quest quest) {
+    private static void addObjectiveLines(List<String> lines, noppes.npcs.controllers.data.Quest quest,
+                                          DialogController dialogController, Set<Integer> dialogIds) {
         QuestInterface questInterface = quest.questInterface;
-
-        if (questInterface == null) {
-            return;
-        }
-
         List<String> objectives = new ArrayList<String>();
 
         if (questInterface instanceof QuestItem) {
@@ -549,11 +735,17 @@ public final class CustomNpcQuestImporter {
             addLocationObjective(objectives, locationQuest.location);
             addLocationObjective(objectives, locationQuest.location2);
             addLocationObjective(objectives, locationQuest.location3);
-        } else if (questInterface instanceof QuestDialog) {
-            Set<Integer> required = getRequiredDialogIds(quest);
-            for (Integer dialogId : required) {
-                objectives.add("Read dialog " + dialogId);
+        }
+
+        for (Integer dialogId : dialogIds) {
+            if (dialogId == null || dialogId.intValue() <= 0) {
+                continue;
             }
+
+            Dialog dialog = getDialog(dialogController, dialogId.intValue());
+            objectives.add(dialog == null
+                    ? "Read dialog " + dialogId
+                    : "Read: " + clean(dialog.title, "dialog " + dialogId));
         }
 
         if (!objectives.isEmpty()) {
@@ -596,24 +788,25 @@ public final class CustomNpcQuestImporter {
         }
     }
 
-    private static void addDialogLines(List<String> lines, noppes.npcs.controllers.data.Quest quest, DialogController dialogController) {
-        if (dialogController == null || dialogController.dialogs == null || dialogController.dialogs.isEmpty()) {
+    private static void addDialogLines(List<String> lines, DialogController dialogController, Set<Integer> dialogIds) {
+        if (dialogController == null || dialogController.dialogs == null || dialogController.dialogs.isEmpty()
+                || dialogIds.isEmpty()) {
             return;
         }
 
-        Set<Integer> required = getRequiredDialogIds(quest);
-        List<Dialog> dialogs = new ArrayList<Dialog>(dialogController.dialogs.values());
-        Collections.sort(dialogs, new Comparator<Dialog>() {
+        List<Integer> sorted = new ArrayList<Integer>(dialogIds);
+        Collections.sort(sorted, new Comparator<Integer>() {
             @Override
-            public int compare(Dialog left, Dialog right) {
-                return left.id < right.id ? -1 : left.id == right.id ? 0 : 1;
+            public int compare(Integer left, Integer right) {
+                return left.intValue() < right.intValue() ? -1 : left.equals(right) ? 0 : 1;
             }
         });
 
         boolean started = false;
 
-        for (Dialog dialog : dialogs) {
-            if (dialog == null || (dialog.quest != quest.id && !required.contains(Integer.valueOf(dialog.id)))) {
+        for (Integer dialogId : sorted) {
+            Dialog dialog = getDialog(dialogController, dialogId.intValue());
+            if (dialog == null) {
                 continue;
             }
 
@@ -705,23 +898,94 @@ public final class CustomNpcQuestImporter {
         return false;
     }
 
-    private static Set<Integer> getRequiredDialogIds(noppes.npcs.controllers.data.Quest quest) {
+    private static Set<Integer> getRequiredDialogIds(noppes.npcs.controllers.data.Quest quest, DialogController dialogController) {
         Set<Integer> ids = new LinkedHashSet<Integer>();
 
         if (quest.questInterface instanceof QuestDialog) {
             QuestDialog dialogQuest = (QuestDialog) quest.questInterface;
-            if (dialogQuest.dialogs == null) {
-                return ids;
+            if (dialogQuest.dialogs != null) {
+                for (Integer id : dialogQuest.dialogs.values()) {
+                    if (id != null && id.intValue() > 0) {
+                        collectDialogId(id.intValue(), dialogController, ids);
+                    }
+                }
             }
+        }
 
-            for (Integer id : dialogQuest.dialogs.values()) {
-                if (id != null && id.intValue() > 0) {
-                    ids.add(id);
+        if (dialogController != null && dialogController.dialogs != null && !dialogController.dialogs.isEmpty()) {
+            List<Dialog> dialogs = new ArrayList<Dialog>(dialogController.dialogs.values());
+            Collections.sort(dialogs, new Comparator<Dialog>() {
+                @Override
+                public int compare(Dialog left, Dialog right) {
+                    return left.id < right.id ? -1 : left.id == right.id ? 0 : 1;
+                }
+            });
+
+            for (Dialog dialog : dialogs) {
+                if (dialog != null && dialog.quest == quest.id) {
+                    collectDialogId(dialog.id, dialogController, ids);
                 }
             }
         }
 
         return ids;
+    }
+
+    private static void collectDialogId(int dialogId, DialogController dialogController, Set<Integer> ids) {
+        if (dialogId <= 0 || !ids.add(Integer.valueOf(dialogId))) {
+            return;
+        }
+
+        Dialog dialog = getDialog(dialogController, dialogId);
+        if (dialog == null) {
+            return;
+        }
+
+        collectAvailabilityDialog(dialog.availability, dialogController, ids);
+
+        if (dialog.options == null || dialog.options.isEmpty()) {
+            return;
+        }
+
+        List<DialogOption> options = new ArrayList<DialogOption>(dialog.options.values());
+        Collections.sort(options, new Comparator<DialogOption>() {
+            @Override
+            public int compare(DialogOption left, DialogOption right) {
+                int leftSlot = left == null ? 0 : left.slot;
+                int rightSlot = right == null ? 0 : right.slot;
+                if (leftSlot != rightSlot) {
+                    return leftSlot < rightSlot ? -1 : 1;
+                }
+
+                int leftDialog = left == null ? 0 : left.dialogId;
+                int rightDialog = right == null ? 0 : right.dialogId;
+                return leftDialog < rightDialog ? -1 : leftDialog == rightDialog ? 0 : 1;
+            }
+        });
+
+        for (DialogOption option : options) {
+            if (option != null && option.optionType == 1 && option.dialogId > 0) {
+                collectDialogId(option.dialogId, dialogController, ids);
+            }
+        }
+    }
+
+    private static void collectAvailabilityDialog(Availability availability, DialogController dialogController, Set<Integer> ids) {
+        if (availability == null) {
+            return;
+        }
+
+        collectAvailabilityDialog(availability.dialogId, availability.dialogAvailable, dialogController, ids);
+        collectAvailabilityDialog(availability.dialog2Id, availability.dialog2Available, dialogController, ids);
+        collectAvailabilityDialog(availability.dialog3Id, availability.dialog3Available, dialogController, ids);
+        collectAvailabilityDialog(availability.dialog4Id, availability.dialog4Available, dialogController, ids);
+    }
+
+    private static void collectAvailabilityDialog(int dialogId, EnumAvailabilityDialog type,
+                                                  DialogController dialogController, Set<Integer> ids) {
+        if (dialogId > 0 && type == EnumAvailabilityDialog.After) {
+            collectDialogId(dialogId, dialogController, ids);
+        }
     }
 
     private static Dialog getDialog(DialogController dialogController, int id) {
@@ -898,6 +1162,8 @@ public final class CustomNpcQuestImporter {
         public int imported;
         public int existing;
         public int skipped;
+        public int questsUpdated;
+        public int questTasks;
         public int dialogTasks;
         public int dependencies;
         public int chaptersCreated;

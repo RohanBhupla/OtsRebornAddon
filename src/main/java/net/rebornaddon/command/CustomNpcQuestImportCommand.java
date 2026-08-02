@@ -83,6 +83,8 @@ public class CustomNpcQuestImportCommand extends CommandBase {
                 + ", imported " + result.imported
                 + ", existing " + result.existing
                 + ", skipped " + result.skipped
+                + ", quests updated " + result.questsUpdated
+                + ", quest tasks " + result.questTasks
                 + ", chapters created " + result.chaptersCreated
                 + ", dialog tasks " + result.dialogTasks
                 + ", dependencies " + result.dependencies
