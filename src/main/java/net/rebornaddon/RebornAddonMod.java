@@ -56,6 +56,7 @@ public class RebornAddonMod {
         MinecraftForge.EVENT_BUS.register(VariedCommoditiesRecipePatch.INSTANCE);
         RankedNetwork.init();
         RebornAddonNetwork.init(event.getSide());
+        ShinobiAddonRestrictionHandler.applyVisibilityRules();
     }
 
     @Mod.EventHandler
@@ -69,6 +70,7 @@ public class RebornAddonMod {
         MinecraftForge.EVENT_BUS.register(VillageSelectionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(CreatorCreditsHandler.INSTANCE);
         registerClientVisibilityHandler(event);
+        ShinobiAddonRestrictionHandler.applyVisibilityRules();
         ShinobiAddonPerformancePatch.apply();
         NarutoProgressionHandler.apply();
     }
@@ -78,6 +80,7 @@ public class RebornAddonMod {
         NarutoPortalTileEntityPatch.apply();
         ShinobiAddonPerformancePatch.apply();
         NarutoProgressionHandler.apply();
+        ShinobiAddonRestrictionHandler.applyVisibilityRules();
     }
 
     @Mod.EventHandler

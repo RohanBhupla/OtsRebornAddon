@@ -1,9 +1,11 @@
 package net.rebornaddon.compat;
 
 import net.minecraft.block.Block;
+import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.NonNullList;
 import net.minecraft.util.ResourceLocation;
@@ -15,12 +17,18 @@ import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.world.BlockEvent;
+import net.minecraftforge.fml.common.Loader;
+import net.minecraftforge.fml.common.event.FMLInterModComms;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraftforge.fml.common.registry.ForgeRegistries;
+import net.minecraftforge.oredict.OreDictionary;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 public class ShinobiAddonRestrictionHandler {
@@ -91,6 +99,86 @@ public class ShinobiAddonRestrictionHandler {
 
     public static boolean shouldRestrictName(ResourceLocation name) {
         return name != null && isShinobiName(name) && !ALLOWED_ITEMS.contains(name.toString());
+    }
+
+    public static void applyVisibilityRules() {
+        for (Item item : ForgeRegistries.ITEMS.getValuesCollection()) {
+            ResourceLocation name = item.getRegistryName();
+            if (!shouldRestrictName(name)) {
+                continue;
+            }
+
+            item.setCreativeTab(null);
+            sendJeiHide(item);
+        }
+    }
+
+    public static List<ItemStack> visibilityStacksFor(Item item) {
+        NonNullList<ItemStack> found = NonNullList.create();
+        List<ItemStack> stacks = new ArrayList<ItemStack>();
+        Set<String> seen = new HashSet<String>();
+
+        addSubItems(item, CreativeTabs.SEARCH, found);
+        for (CreativeTabs tab : CreativeTabs.CREATIVE_TAB_ARRAY) {
+            if (tab != null) {
+                addSubItems(item, tab, found);
+            }
+        }
+
+        for (ItemStack stack : found) {
+            addStack(stacks, seen, stack);
+        }
+
+        addStack(stacks, seen, new ItemStack(item));
+        addStack(stacks, seen, new ItemStack(item, 1, OreDictionary.WILDCARD_VALUE));
+        for (int meta = 0; meta <= 128; meta++) {
+            addStack(stacks, seen, new ItemStack(item, 1, meta));
+        }
+
+        return stacks;
+    }
+
+    private static void addSubItems(Item item, CreativeTabs tab, NonNullList<ItemStack> stacks) {
+        try {
+            item.getSubItems(tab, stacks);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private static void addStack(List<ItemStack> stacks, Set<String> seen, ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+
+        ResourceLocation name = stack.getItem().getRegistryName();
+        if (name == null) {
+            return;
+        }
+
+        String key = name.toString() + ":" + stack.getMetadata();
+        if (seen.add(key)) {
+            stacks.add(stack);
+        }
+    }
+
+    private static void sendJeiHide(Item item) {
+        if (!Loader.isModLoaded("jei") || item == null) {
+            return;
+        }
+
+        for (ItemStack stack : visibilityStacksFor(item)) {
+            FMLInterModComms.sendMessage("jei", "hide", stack);
+            FMLInterModComms.sendMessage("jei", "itemBlacklist", stack);
+            FMLInterModComms.sendMessage("jei", "hide_item", stack);
+        }
+
+        ResourceLocation name = item.getRegistryName();
+        if (name != null) {
+            String id = name.toString();
+            FMLInterModComms.sendMessage("jei", "hide", id);
+            FMLInterModComms.sendMessage("jei", "itemBlacklist", id);
+            FMLInterModComms.sendMessage("jei", "hide_item", id);
+        }
     }
 
     @SubscribeEvent
