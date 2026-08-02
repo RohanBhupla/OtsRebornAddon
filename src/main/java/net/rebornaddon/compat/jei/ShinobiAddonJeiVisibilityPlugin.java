@@ -15,12 +15,15 @@ import net.minecraft.item.crafting.Ingredient;
 import net.minecraft.util.NonNullList;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.world.World;
+import net.minecraftforge.oredict.OreDictionary;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import net.minecraftforge.registries.IForgeRegistryEntry;
 import net.rebornaddon.compat.ShinobiAddonRestrictionHandler;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @JEIPlugin
 public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
@@ -37,21 +40,58 @@ public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
                 continue;
             }
 
-            NonNullList<ItemStack> stacks = NonNullList.create();
-            item.getSubItems(CreativeTabs.SEARCH, stacks);
-
-            if (stacks.isEmpty()) {
-                stacks.add(new ItemStack(item));
-            }
-
-            for (ItemStack stack : stacks) {
-                if (stack.isEmpty()) {
-                    continue;
-                }
-
+            for (ItemStack stack : stacksFor(item)) {
                 ingredientBlacklist.addIngredientToBlacklist(stack);
                 itemBlacklist.addItemToBlacklist(stack);
             }
+        }
+    }
+
+    private List<ItemStack> stacksFor(Item item) {
+        NonNullList<ItemStack> found = NonNullList.create();
+        Set<String> seen = new HashSet<String>();
+        List<ItemStack> stacks = new ArrayList<ItemStack>();
+
+        addSubItems(item, CreativeTabs.SEARCH, found);
+        for (CreativeTabs tab : CreativeTabs.CREATIVE_TAB_ARRAY) {
+            if (tab != null) {
+                addSubItems(item, tab, found);
+            }
+        }
+
+        for (ItemStack stack : found) {
+            addStack(stacks, seen, stack);
+        }
+
+        addStack(stacks, seen, new ItemStack(item));
+        addStack(stacks, seen, new ItemStack(item, 1, OreDictionary.WILDCARD_VALUE));
+        for (int meta = 0; meta <= 15; meta++) {
+            addStack(stacks, seen, new ItemStack(item, 1, meta));
+        }
+
+        return stacks;
+    }
+
+    private static void addSubItems(Item item, CreativeTabs tab, NonNullList<ItemStack> stacks) {
+        try {
+            item.getSubItems(tab, stacks);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private static void addStack(List<ItemStack> stacks, Set<String> seen, ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+
+        ResourceLocation name = stack.getItem().getRegistryName();
+        if (name == null) {
+            return;
+        }
+
+        String key = name.toString() + ":" + stack.getItemDamage();
+        if (seen.add(key)) {
+            stacks.add(stack);
         }
     }
 

@@ -92,7 +92,7 @@ public class GuiCreatorCredits extends GuiScreen {
         fr.drawString("Otsutsuki Reborn", contentLeft, panelY + 31, Theme.TEXT_MUTED);
 
         int y = panelY + 70;
-        y = drawCreditBlock(fr, contentLeft, contentRight, y, "AHZNB / DecentStudio",
+        y = drawCreditBlock(fr, contentLeft, contentRight, y, "AHZNB",
                 "Credited for Naruto Add-ons content and original add-on work used by this pack.",
                 AHZNB_DISCORD, Theme.GOLD);
         y += 14;
