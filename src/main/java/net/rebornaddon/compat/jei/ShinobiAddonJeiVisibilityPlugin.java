@@ -3,8 +3,10 @@ package net.rebornaddon.compat.jei;
 import mezz.jei.api.IModPlugin;
 import mezz.jei.api.IModRegistry;
 import mezz.jei.api.IItemBlacklist;
+import mezz.jei.api.IJeiRuntime;
 import mezz.jei.api.JEIPlugin;
 import mezz.jei.api.ingredients.IIngredientBlacklist;
+import mezz.jei.api.ingredients.IIngredientRegistry;
 import net.minecraft.creativetab.CreativeTabs;
 import net.minecraft.inventory.InventoryCrafting;
 import net.minecraft.item.Item;
@@ -28,9 +30,13 @@ import java.util.Set;
 @JEIPlugin
 public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
 
+    private IIngredientRegistry ingredientRegistry;
+
     @Override
     public void register(IModRegistry registry) {
         removeOversizedVariedCommoditiesRecipes();
+        ingredientRegistry = registry.getIngredientRegistry();
+
         IIngredientBlacklist ingredientBlacklist = registry.getJeiHelpers().getIngredientBlacklist();
         IItemBlacklist itemBlacklist = registry.getJeiHelpers().getItemBlacklist();
 
@@ -44,6 +50,24 @@ public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
                 ingredientBlacklist.addIngredientToBlacklist(stack);
                 itemBlacklist.addItemToBlacklist(stack);
             }
+        }
+    }
+
+    @Override
+    public void onRuntimeAvailable(IJeiRuntime jeiRuntime) {
+        if (ingredientRegistry == null) {
+            return;
+        }
+
+        List<ItemStack> restricted = new ArrayList<ItemStack>();
+        for (ItemStack stack : ingredientRegistry.getIngredients(ItemStack.class)) {
+            if (ShinobiAddonRestrictionHandler.shouldRestrict(stack)) {
+                restricted.add(stack);
+            }
+        }
+
+        if (!restricted.isEmpty()) {
+            ingredientRegistry.removeIngredientsAtRuntime(ItemStack.class, restricted);
         }
     }
 
