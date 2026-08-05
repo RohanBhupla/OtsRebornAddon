@@ -21,6 +21,11 @@ public interface HubTab {
 
     default void onTick() {}
 
+    /** Only tabs that actually use a text field need to override these - GuiHub
+     *  forwards raw keyboard/mouse events here in addition to its normal button
+     *  handling, since GuiTextField isn't part of the buttonList mechanism. */
+    default void handleKeyTyped(char typedChar, int keyCode) {}
+    default void handleMouseClicked(int mouseX, int mouseY, int mouseButton) {}
 
     default int getTabColorActive() {
         return net.rebornaddon.gui.theme.Theme.PURPLE_DEEP;

@@ -12,8 +12,9 @@ import java.util.List;
 
 /**
  * Pushed from server to client roughly once a second, carrying the receiving player's
- * own stats/queue state plus a leaderboard snapshot. Replaces the old scoreboard-based
- * sync entirely - this is a direct, reliable packet now that both sides live in one mod.
+ * own stats/queue/party state plus a leaderboard snapshot. Replaces the old
+ * scoreboard-based sync entirely - this is a direct, reliable packet now that both
+ * sides live in one mod.
  */
 public class RankedSyncMessage implements IMessage {
 
@@ -25,14 +26,24 @@ public class RankedSyncMessage implements IMessage {
     private int peakElo;
     private int matchState; // 0 = idle, 1 = queued, 2 = in an active match
     private int queuedModeNetId; // only meaningful when matchState == 1; -1 otherwise
+    private int seasonNumber;
+    private int seasonDaysRemaining;
     private List<String> leaderboardNames = new ArrayList<>();
     private List<Integer> leaderboardElos = new ArrayList<>();
+
+    // Party state
+    private boolean inParty;
+    private boolean isPartyLeader;
+    private List<String> partyMemberNames = new ArrayList<>();
+    private String pendingInviteFrom = ""; // empty = no pending invite waiting
 
     public RankedSyncMessage() {} // required no-arg constructor
 
     public RankedSyncMessage(int elo, int wins, int losses, int draws, int winStreak, int peakElo,
-                              int matchState, int queuedModeNetId,
-                              List<String> leaderboardNames, List<Integer> leaderboardElos) {
+                              int matchState, int queuedModeNetId, int seasonNumber, int seasonDaysRemaining,
+                              List<String> leaderboardNames, List<Integer> leaderboardElos,
+                              boolean inParty, boolean isPartyLeader, List<String> partyMemberNames,
+                              String pendingInviteFrom) {
         this.elo = elo;
         this.wins = wins;
         this.losses = losses;
@@ -41,8 +52,14 @@ public class RankedSyncMessage implements IMessage {
         this.peakElo = peakElo;
         this.matchState = matchState;
         this.queuedModeNetId = queuedModeNetId;
+        this.seasonNumber = seasonNumber;
+        this.seasonDaysRemaining = seasonDaysRemaining;
         this.leaderboardNames = leaderboardNames;
         this.leaderboardElos = leaderboardElos;
+        this.inParty = inParty;
+        this.isPartyLeader = isPartyLeader;
+        this.partyMemberNames = partyMemberNames;
+        this.pendingInviteFrom = pendingInviteFrom == null ? "" : pendingInviteFrom;
     }
 
     @Override
@@ -55,11 +72,21 @@ public class RankedSyncMessage implements IMessage {
         buf.writeInt(peakElo);
         buf.writeInt(matchState);
         buf.writeInt(queuedModeNetId);
+        buf.writeInt(seasonNumber);
+        buf.writeInt(seasonDaysRemaining);
         buf.writeInt(leaderboardNames.size());
         for (int i = 0; i < leaderboardNames.size(); i++) {
             ByteBufUtils.writeUTF8String(buf, leaderboardNames.get(i));
             buf.writeInt(leaderboardElos.get(i));
         }
+
+        buf.writeBoolean(inParty);
+        buf.writeBoolean(isPartyLeader);
+        buf.writeInt(partyMemberNames.size());
+        for (String name : partyMemberNames) {
+            ByteBufUtils.writeUTF8String(buf, name);
+        }
+        ByteBufUtils.writeUTF8String(buf, pendingInviteFrom);
     }
 
     @Override
@@ -72,6 +99,8 @@ public class RankedSyncMessage implements IMessage {
         peakElo = buf.readInt();
         matchState = buf.readInt();
         queuedModeNetId = buf.readInt();
+        seasonNumber = buf.readInt();
+        seasonDaysRemaining = buf.readInt();
         int count = buf.readInt();
         leaderboardNames = new ArrayList<>();
         leaderboardElos = new ArrayList<>();
@@ -79,6 +108,15 @@ public class RankedSyncMessage implements IMessage {
             leaderboardNames.add(ByteBufUtils.readUTF8String(buf));
             leaderboardElos.add(buf.readInt());
         }
+
+        inParty = buf.readBoolean();
+        isPartyLeader = buf.readBoolean();
+        int partySize = buf.readInt();
+        partyMemberNames = new ArrayList<>();
+        for (int i = 0; i < partySize; i++) {
+            partyMemberNames.add(ByteBufUtils.readUTF8String(buf));
+        }
+        pendingInviteFrom = ByteBufUtils.readUTF8String(buf);
     }
 
     /** Deliberately NOT SideOnly, and deliberately doesn't reference Minecraft or
@@ -101,6 +139,12 @@ public class RankedSyncMessage implements IMessage {
     public int getPeakElo() { return peakElo; }
     public int getMatchState() { return matchState; }
     public int getQueuedModeNetId() { return queuedModeNetId; }
+    public int getSeasonNumber() { return seasonNumber; }
+    public int getSeasonDaysRemaining() { return seasonDaysRemaining; }
     public List<String> getLeaderboardNames() { return leaderboardNames; }
     public List<Integer> getLeaderboardElos() { return leaderboardElos; }
+    public boolean isInParty() { return inParty; }
+    public boolean isPartyLeader() { return isPartyLeader; }
+    public List<String> getPartyMemberNames() { return partyMemberNames; }
+    public String getPendingInviteFrom() { return pendingInviteFrom; }
 }

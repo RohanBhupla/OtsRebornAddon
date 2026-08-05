@@ -40,7 +40,7 @@ public class RankedAdminCommand extends CommandBase {
             BlockPos targetPos) {
         if (args.length == 1) {
             return getListOfStringsMatchingLastWord(args, Arrays.asList("pos1", "pos2", "create", "addspawn",
-                    "clearspawns", "resize", "list", "remove", "forceend", "setloserspawn"));
+                    "clearspawns", "resize", "list", "remove", "forceend", "setloserspawn", "season"));
         }
 
         if (args.length == 2) {
@@ -52,6 +52,10 @@ public class RankedAdminCommand extends CommandBase {
 
             if ("forceend".equals(subcommand)) {
                 return getListOfStringsMatchingLastWord(args, server.getOnlinePlayerNames());
+            }
+
+            if ("season".equals(subcommand)) {
+                return getListOfStringsMatchingLastWord(args, Arrays.asList("info", "end", "setreward"));
             }
         }
 
@@ -216,8 +220,87 @@ public class RankedAdminCommand extends CommandBase {
                 player.sendMessage(msg(TextFormatting.GREEN + "Loser spawn point set at your location."));
                 return;
 
+            case "season":
+                handleSeasonSubcommand(player, args);
+                return;
+
             default:
                 sendUsage(player);
+        }
+    }
+
+    private void handleSeasonSubcommand(EntityPlayerMP player, String[] args) {
+        if (args.length < 2) {
+            player.sendMessage(msg(TextFormatting.GOLD + "=== Season Commands ==="));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season info"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season end  (ends now, distributes rewards, hard-resets ELO, starts next season)"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season setreward <tierName>  (hold the item first)"));
+            player.sendMessage(msg(TextFormatting.DARK_GRAY + "Tier names: Academy Student, Genin, Chunin, Jonin, Elite Jonin, Kage"));
+            return;
+        }
+
+        switch (args[1].toLowerCase()) {
+            case "info": {
+                net.rebornaddon.ranked.season.SeasonManager sm = RankedSystem.seasonManager;
+                long remainingMs = sm.getTimeRemainingMillis();
+                long days = remainingMs / (24L * 60 * 60 * 1000);
+                long hours = (remainingMs / (60L * 60 * 1000)) % 24;
+
+                player.sendMessage(msg(TextFormatting.GOLD + "=== Season " + sm.getSeasonNumber() + " ==="));
+                player.sendMessage(msg(TextFormatting.GRAY + "Time remaining: " + TextFormatting.WHITE + days + "d " + hours + "h"));
+                player.sendMessage(msg(TextFormatting.GRAY + "Configured rewards: " + TextFormatting.WHITE
+                        + (sm.getConfiguredTierNames().isEmpty() ? "none set" : String.join(", ", sm.getConfiguredTierNames().keySet()))));
+                return;
+            }
+
+            case "end": {
+                net.rebornaddon.ranked.season.SeasonManager sm = RankedSystem.seasonManager;
+                sm.endSeasonAndDistribute(
+                        RankedSystem.eloManager,
+                        this::grantItemOrQueue,
+                        uuid -> player.getServer().getPlayerList().getPlayerByUUID(uuid) != null,
+                        sm.getSeasonDurationMillis()
+                );
+                player.sendMessage(msg(TextFormatting.GREEN + "Season ended. Rewards distributed, ELO reset, season "
+                        + sm.getSeasonNumber() + " has begun."));
+                return;
+            }
+
+            case "setreward": {
+                if (args.length < 3) {
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season setreward <tierName>  (hold the item first)"));
+                    return;
+                }
+                String tierName = args[2];
+                net.minecraft.item.ItemStack held = player.getHeldItemMainhand();
+                if (held == null || held.isEmpty()) {
+                    player.sendMessage(msg(TextFormatting.RED + "Hold the item you want to set as the reward first."));
+                    return;
+                }
+                RankedSystem.seasonManager.setReward(tierName, held.copy());
+                player.sendMessage(msg(TextFormatting.GREEN + "Reward for '" + tierName + "' set to your held item."));
+                return;
+            }
+
+            default:
+                player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season <info|end|setreward>"));
+        }
+    }
+
+    /** Used as the "online player" branch when distributing season rewards - gives the
+     *  item directly, and if their inventory can't fully hold it, queues the remainder
+     *  as a pending reward rather than letting it vanish. */
+    private void grantItemOrQueue(java.util.UUID uuid, net.minecraft.item.ItemStack item) {
+        EntityPlayerMP p = net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                .getMinecraftServerInstance().getPlayerList().getPlayerByUUID(uuid);
+        if (p == null) {
+            RankedSystem.seasonManager.queuePendingReward(uuid, item);
+            return;
+        }
+        net.minecraft.item.ItemStack toGive = item.copy();
+        p.inventory.addItemStackToInventory(toGive);
+        if (!toGive.isEmpty()) {
+            RankedSystem.seasonManager.queuePendingReward(uuid, toGive);
         }
     }
 
@@ -230,6 +313,7 @@ public class RankedAdminCommand extends CommandBase {
         player.sendMessage(msg(TextFormatting.GRAY + "4. Add spawns: /rankedadmin addspawn <id> <0|1>"));
         player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin list, remove <id>, clearspawns <id> [0|1]"));
         player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin forceend <player>, setloserspawn"));
+        player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season <info|end|setreward>"));
     }
 
     private TextComponentString msg(String s) {

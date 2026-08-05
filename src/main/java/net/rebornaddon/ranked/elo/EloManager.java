@@ -76,6 +76,22 @@ public class EloManager {
         return all;
     }
 
+    public synchronized List<PlayerStats> getAllStats() {
+        return new ArrayList<>(stats.values());
+    }
+
+    /** Hard reset for a new season: ELO back to the starting value, win streak cleared.
+     *  Lifetime wins/losses/draws and peakElo are deliberately left untouched - those
+     *  read as permanent records rather than season-scoped stats. Change this if you'd
+     *  rather those reset too. */
+    public synchronized void hardResetAllForNewSeason() {
+        for (PlayerStats s : stats.values()) {
+            s.elo = startingElo;
+            s.currentWinStreak = 0;
+        }
+        saveAll();
+    }
+
     /**
      * Applies ELO changes for a completed match between two teams, same formula as the
      * original plugin: each team's average ELO acts as its rating, standard logistic

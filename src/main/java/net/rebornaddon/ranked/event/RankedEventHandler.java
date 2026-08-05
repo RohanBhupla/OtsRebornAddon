@@ -71,11 +71,13 @@ public class RankedEventHandler {
                 if (!started) {
                     // No free arena right now - requeue everyone rather than losing their spot,
                     // and actually tell them why nothing happened instead of leaving them guessing.
-                    for (net.rebornaddon.ranked.queue.QueuedPlayer qp : proposal.getTeam0()) {
-                        RankedSystem.queueManager.join(proposal.getMode(), qp.getUuid(), qp.getName(), qp.getElo());
+                    // Re-add the ORIGINAL groups, not flattened individuals, so a party that got
+                    // matched together doesn't get silently split apart by this failure path.
+                    for (net.rebornaddon.ranked.queue.QueuedGroup g : proposal.getTeam0Groups()) {
+                        RankedSystem.queueManager.joinGroup(proposal.getMode(), g);
                     }
-                    for (net.rebornaddon.ranked.queue.QueuedPlayer qp : proposal.getTeam1()) {
-                        RankedSystem.queueManager.join(proposal.getMode(), qp.getUuid(), qp.getName(), qp.getElo());
+                    for (net.rebornaddon.ranked.queue.QueuedGroup g : proposal.getTeam1Groups()) {
+                        RankedSystem.queueManager.joinGroup(proposal.getMode(), g);
                     }
 
                     java.util.List<net.rebornaddon.ranked.queue.QueuedPlayer> all = new ArrayList<>(proposal.getTeam0());
@@ -93,6 +95,45 @@ public class RankedEventHandler {
             }
 
             syncAllPlayers();
+            checkSeasonExpiry();
+            RankedSystem.partyManager.cleanupExpiredInvites();
+        }
+    }
+
+    private void checkSeasonExpiry() {
+        if (!RankedSystem.seasonManager.isSeasonExpired()) return;
+
+        int endingSeasonNumber = RankedSystem.seasonManager.getSeasonNumber();
+        RankedSystem.seasonManager.endSeasonAndDistribute(
+                RankedSystem.eloManager,
+                this::grantItemOrQueue,
+                uuid -> net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                        .getMinecraftServerInstance().getPlayerList().getPlayerByUUID(uuid) != null,
+                RankedSystem.seasonManager.getSeasonDurationMillis()
+        );
+
+        String msg = net.minecraft.util.text.TextFormatting.GOLD + "Season " + endingSeasonNumber
+                + " has ended! Rewards distributed, ELO reset. Season "
+                + RankedSystem.seasonManager.getSeasonNumber() + " begins now.";
+        for (EntityPlayerMP p : net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                .getMinecraftServerInstance().getPlayerList().getPlayers()) {
+            p.sendMessage(new net.minecraft.util.text.TextComponentString(msg));
+        }
+    }
+
+    /** Same logic as the admin command's manual season-end - kept here too since the
+     *  automatic timer-based end needs it without going through a command sender. */
+    private void grantItemOrQueue(UUID uuid, net.minecraft.item.ItemStack item) {
+        EntityPlayerMP p = net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                .getMinecraftServerInstance().getPlayerList().getPlayerByUUID(uuid);
+        if (p == null) {
+            RankedSystem.seasonManager.queuePendingReward(uuid, item);
+            return;
+        }
+        net.minecraft.item.ItemStack toGive = item.copy();
+        p.inventory.addItemStackToInventory(toGive);
+        if (!toGive.isEmpty()) {
+            RankedSystem.seasonManager.queuePendingReward(uuid, toGive);
         }
     }
 
@@ -122,8 +163,20 @@ public class RankedEventHandler {
                 }
             }
 
+            long remainingMs = RankedSystem.seasonManager.getTimeRemainingMillis();
+            int seasonDaysRemaining = (int) (remainingMs / (24L * 60 * 60 * 1000));
+
+            net.rebornaddon.ranked.party.Party party = RankedSystem.partyManager.getParty(p.getUniqueID());
+            boolean inParty = party != null;
+            boolean isLeader = inParty && party.isLeader(p.getUniqueID());
+            List<String> partyMemberNames = inParty ? party.getMemberNames() : java.util.Collections.emptyList();
+            String pendingInviteFrom = RankedSystem.partyManager.getPendingInviteFromName(p.getUniqueID());
+            if (pendingInviteFrom == null) pendingInviteFrom = "";
+
             RankedNetwork.CHANNEL.sendTo(new RankedSyncMessage(stats.elo, stats.wins, stats.losses,
-                    stats.draws, stats.currentWinStreak, stats.peakElo, state, queuedModeNetId, names, elos), p);
+                    stats.draws, stats.currentWinStreak, stats.peakElo, state, queuedModeNetId,
+                    RankedSystem.seasonManager.getSeasonNumber(), seasonDaysRemaining, names, elos,
+                    inParty, isLeader, partyMemberNames, pendingInviteFrom), p);
         }
     }
 
@@ -183,5 +236,28 @@ public class RankedEventHandler {
         UUID uuid = event.player.getUniqueID();
         RankedSystem.queueManager.leaveAll(uuid);
         RankedSystem.matchManager.onPlayerQuit(uuid);
+        RankedSystem.partyManager.handleDisconnect(uuid);
+    }
+
+    @SubscribeEvent
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!RankedSystem.isReady()) return;
+        if (!(event.player instanceof EntityPlayerMP)) return;
+        EntityPlayerMP p = (EntityPlayerMP) event.player;
+
+        List<net.minecraft.item.ItemStack> pending = RankedSystem.seasonManager.takePendingRewards(p.getUniqueID());
+        if (pending.isEmpty()) return;
+
+        p.sendMessage(new net.minecraft.util.text.TextComponentString(
+                net.minecraft.util.text.TextFormatting.GOLD + "You have " + pending.size()
+                + " season reward(s) waiting - check your inventory!"));
+        for (net.minecraft.item.ItemStack item : pending) {
+            net.minecraft.item.ItemStack toGive = item.copy();
+            p.inventory.addItemStackToInventory(toGive);
+            if (!toGive.isEmpty()) {
+                // Still couldn't fit - re-queue rather than lose it.
+                RankedSystem.seasonManager.queuePendingReward(p.getUniqueID(), toGive);
+            }
+        }
     }
 }

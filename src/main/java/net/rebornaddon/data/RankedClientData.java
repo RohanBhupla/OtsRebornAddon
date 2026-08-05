@@ -7,7 +7,11 @@ import net.rebornaddon.ranked.network.RankedSyncMessage;
 import java.util.ArrayList;
 import java.util.List;
 
-
+/**
+ * Client-side cache of the last RankedSyncMessage received from the server. This is
+ * what the hub GUI actually reads - replaces the old scoreboard-polling approach
+ * entirely now that a real packet pushes this data directly.
+ */
 @SideOnly(Side.CLIENT)
 public final class RankedClientData {
 
@@ -17,8 +21,17 @@ public final class RankedClientData {
     private static volatile int wins = 0;
     private static volatile int losses = 0;
     private static volatile int draws = 0;
-    private static volatile int matchState = 0;
+    private static volatile int winStreak = 0;
+    private static volatile int peakElo = 1000;
+    private static volatile int matchState = 0; // 0 = idle, 1 = queued, 2 = in a match
+    private static volatile int queuedModeNetId = -1;
+    private static volatile int seasonNumber = 1;
+    private static volatile int seasonDaysRemaining = 0;
     private static volatile List<LeaderboardEntry> leaderboard = new ArrayList<>();
+    private static volatile boolean inParty = false;
+    private static volatile boolean isPartyLeader = false;
+    private static volatile List<String> partyMemberNames = new ArrayList<>();
+    private static volatile String pendingInviteFrom = "";
 
     public static class LeaderboardEntry {
         public final String playerName;
@@ -35,7 +48,16 @@ public final class RankedClientData {
         wins = msg.getWins();
         losses = msg.getLosses();
         draws = msg.getDraws();
+        winStreak = msg.getWinStreak();
+        peakElo = msg.getPeakElo();
         matchState = msg.getMatchState();
+        queuedModeNetId = msg.getQueuedModeNetId();
+        seasonNumber = msg.getSeasonNumber();
+        seasonDaysRemaining = msg.getSeasonDaysRemaining();
+        inParty = msg.isInParty();
+        isPartyLeader = msg.isPartyLeader();
+        partyMemberNames = new ArrayList<>(msg.getPartyMemberNames());
+        pendingInviteFrom = msg.getPendingInviteFrom();
 
         List<LeaderboardEntry> entries = new ArrayList<>();
         List<String> names = msg.getLeaderboardNames();
@@ -50,11 +72,36 @@ public final class RankedClientData {
     public static int getWins() { return wins; }
     public static int getLosses() { return losses; }
     public static int getDraws() { return draws; }
+    public static int getWinStreak() { return winStreak; }
+    public static int getPeakElo() { return peakElo; }
+    public static int getSeasonNumber() { return seasonNumber; }
+    public static int getSeasonDaysRemaining() { return seasonDaysRemaining; }
     public static boolean amIInMatch() { return matchState == 2; }
     public static boolean amIQueued() { return matchState == 1; }
+
+    /** Human-readable label for the currently-queued mode, or null if not queued. */
+    public static String getQueuedModeLabel() {
+        if (matchState != 1) return null;
+        switch (queuedModeNetId) {
+            case 0: return "1v1";
+            case 1: return "2v2";
+            case 2: return "3v3";
+            default: return null;
+        }
+    }
+
     public static List<LeaderboardEntry> getLeaderboard(int limit) {
         List<LeaderboardEntry> current = leaderboard;
         if (current.size() > limit) return current.subList(0, limit);
         return current;
+    }
+
+    public static boolean isInParty() { return inParty; }
+    public static boolean isPartyLeader() { return isPartyLeader; }
+    public static List<String> getPartyMemberNames() { return partyMemberNames; }
+
+    /** Null if there's no pending invite waiting right now. */
+    public static String getPendingInviteFrom() {
+        return (pendingInviteFrom == null || pendingInviteFrom.isEmpty()) ? null : pendingInviteFrom;
     }
 }
