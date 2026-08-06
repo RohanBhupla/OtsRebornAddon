@@ -72,7 +72,7 @@ public class LuckPermsStatusCommand extends CommandBase {
         sender.sendMessage(new TextComponentString("LuckPerms detected: " + bridge.isAvailable(server)));
         sender.sendMessage(new TextComponentString("Provider: " + bridge.providerName()));
         sender.sendMessage(new TextComponentString("Bukkit plugin: " + bridge.hasBukkitPlugin()));
-        sender.sendMessage(new TextComponentString("Village groups: stone, leaf, cloud, sand, mist"));
+        sender.sendMessage(new TextComponentString("Village groups: stone, leaf, cloud, sand, mist; rain recognized for existing groups"));
         sender.sendMessage(new TextComponentString("Reset command: /rebornlp reset [player]"));
     }
 }

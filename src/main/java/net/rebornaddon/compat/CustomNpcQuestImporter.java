@@ -13,7 +13,11 @@ import com.feed_the_beast.ftbquests.quest.reward.ItemReward;
 import com.feed_the_beast.ftbquests.quest.reward.RandomReward;
 import com.feed_the_beast.ftbquests.quest.reward.Reward;
 import com.feed_the_beast.ftbquests.quest.reward.XPReward;
+import com.feed_the_beast.ftbquests.quest.task.CheckmarkTask;
+import com.feed_the_beast.ftbquests.quest.task.ItemTask;
+import com.feed_the_beast.ftbquests.quest.task.LocationTask;
 import com.feed_the_beast.ftbquests.quest.task.Task;
+import com.feed_the_beast.ftblib.lib.config.EnumTristate;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
@@ -50,15 +54,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class CustomNpcQuestImporter {
     private static final String TAG_SOURCE = "customnpcs";
     private static final String TAG_QUEST_PREFIX = "customnpc_quest_";
     private static final String TAG_REWARD_PREFIX = "customnpc_reward_";
+    private static final String TAG_TASK_PREFIX = "customnpc_task_";
     private static final String[] RANKS = {"D", "C", "B", "A", "S"};
     private static final String[] RANK_CONTEXTS = {"RANK", "RANKS", "MISSION", "MISSIONS", "QUEST", "QUESTS", "CLASS", "TIER"};
     private static final Pattern[] RANK_PATTERNS = new Pattern[RANKS.length];
+    private static final Pattern COORDINATE_PATTERN = Pattern.compile("(-?\\d+)\\D+(-?\\d+)\\D+(-?\\d+)(?:\\D+(-?\\d+))?");
 
     static {
         for (int i = 0; i < RANKS.length; i++) {
@@ -93,6 +100,14 @@ public final class CustomNpcQuestImporter {
         List<noppes.npcs.controllers.data.Quest> npcQuests = sortedQuests(questController.quests.values());
         Map<Integer, Quest> importedByNpcQuest = new LinkedHashMap<Integer, Quest>(ftbByNpcQuest);
         List<noppes.npcs.controllers.data.Quest> rewardStripCandidates = new ArrayList<noppes.npcs.controllers.data.Quest>();
+
+        if (!preview) {
+            try {
+                result.backupFile = writeConversionBackup(file, npcQuests);
+            } catch (Exception ex) {
+                throw new IllegalStateException("Conversion backup failed: " + ex.getMessage(), ex);
+            }
+        }
 
         for (noppes.npcs.controllers.data.Quest npcQuest : npcQuests) {
             result.scanned++;
@@ -131,16 +146,17 @@ public final class CustomNpcQuestImporter {
             Quest ftbQuest = createQuest(file, chapter, npcQuest, dialogController);
             importedByNpcQuest.put(Integer.valueOf(npcQuest.id), ftbQuest);
             ensureNpcQuestTask(file, ftbQuest, npcQuest, result);
+            result.objectiveTasks += ensureObjectiveTasks(file, ftbQuest, npcQuest, result);
             result.dialogTasks += addDialogTasks(file, ftbQuest, npcQuest, dialogController);
             result.rewards += addRewards(file, ftbQuest, npcQuest, result);
         }
 
         if (!preview) {
             result.dependencies = applyDependencies(npcQuests, importedByNpcQuest, dialogController);
+            result.layoutUpdated = layoutImportedQuests(npcQuests, importedByNpcQuest);
 
             if (!keepCustomNpcRewards && !rewardStripCandidates.isEmpty()) {
                 try {
-                    result.backupFile = writeRewardBackup(rewardStripCandidates);
                     for (noppes.npcs.controllers.data.Quest npcQuest : rewardStripCandidates) {
                         if (stripCustomNpcRewards(npcQuest)) {
                             npcQuest.save();
@@ -148,14 +164,14 @@ public final class CustomNpcQuestImporter {
                         }
                     }
                 } catch (Exception ex) {
-                    throw new IllegalStateException("Reward backup failed: " + ex.getMessage(), ex);
+                    throw new IllegalStateException("CustomNPC reward cleanup failed: " + ex.getMessage(), ex);
                 }
             }
 
             if (result.imported > 0 || result.dependencies > 0 || result.chaptersCreated > 0
                     || result.rewards > 0 || result.rewardTables > 0 || result.customNpcRewardsCleared > 0
                     || result.dialogTasks > 0 || result.questTasks > 0 || result.questsUpdated > 0
-                    || result.descriptionsUpdated > 0) {
+                    || result.descriptionsUpdated > 0 || result.objectiveTasks > 0 || result.layoutUpdated > 0) {
                 file.refreshIDMap();
                 file.save();
                 file.saveNow();
@@ -172,6 +188,7 @@ public final class CustomNpcQuestImporter {
         }
 
         ensureNpcQuestTask(file, ftbQuest, npcQuest, result);
+        result.objectiveTasks += ensureObjectiveTasks(file, ftbQuest, npcQuest, result);
         result.dialogTasks += addDialogTasks(file, ftbQuest, npcQuest, dialogController);
     }
 
@@ -249,9 +266,13 @@ public final class CustomNpcQuestImporter {
 
             NPCQuestTask questTask = (NPCQuestTask) task;
             if (questTask.npcQuest == npcQuest.id) {
-                if (!"Complete CustomNPCs quest".equals(questTask.title) || questTask.checkActive) {
-                    questTask.title = "Complete CustomNPCs quest";
+                String tag = taskTag(npcQuest, "customnpc_turn_in");
+                if (!"Complete CustomNPCs mission".equals(questTask.title) || questTask.checkActive
+                        || !questTask.getTags().contains(tag)) {
+                    questTask.title = "Complete CustomNPCs mission";
                     questTask.checkActive = false;
+                    questTask.getTags().add(TAG_SOURCE);
+                    questTask.getTags().add(tag);
                     ftbQuest.clearCachedData();
                     result.questsUpdated++;
                 }
@@ -261,12 +282,270 @@ public final class CustomNpcQuestImporter {
 
         NPCQuestTask questTask = new NPCQuestTask(ftbQuest);
         questTask.id = file.newID();
-        questTask.title = "Complete CustomNPCs quest";
+        questTask.title = "Complete CustomNPCs mission";
         questTask.npcQuest = npcQuest.id;
         questTask.checkActive = false;
+        questTask.getTags().add(TAG_SOURCE);
+        questTask.getTags().add(taskTag(npcQuest, "customnpc_turn_in"));
         questTask.onCreated();
         file.refreshIDMap();
         result.questTasks++;
+    }
+
+    private static int ensureObjectiveTasks(ServerQuestFile file, Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
+                                            Result result) {
+        QuestInterface questInterface = npcQuest.questInterface;
+        if (questInterface == null) {
+            return 0;
+        }
+
+        int count = 0;
+
+        if (questInterface instanceof QuestItem) {
+            QuestItem itemQuest = (QuestItem) questInterface;
+            if (itemQuest.items != null && itemQuest.items.items != null) {
+                for (int slot = 0; slot < itemQuest.items.items.size(); slot++) {
+                    ItemStack stack = itemQuest.items.items.get(slot);
+                    if (stack == null || stack.isEmpty()) {
+                        continue;
+                    }
+
+                    count += ensureItemObjectiveTask(file, ftbQuest, npcQuest, stack, slot, itemQuest);
+                }
+            }
+        } else if (questInterface instanceof QuestKill) {
+            QuestKill killQuest = (QuestKill) questInterface;
+            count += ensureCheckmarkObjectives(file, ftbQuest, npcQuest, "kill", killQuest.targets);
+        } else if (questInterface instanceof QuestManual) {
+            QuestManual manualQuest = (QuestManual) questInterface;
+            count += ensureCheckmarkObjectives(file, ftbQuest, npcQuest, "manual", manualQuest.manuals);
+        } else if (questInterface instanceof QuestLocation) {
+            QuestLocation locationQuest = (QuestLocation) questInterface;
+            count += ensureLocationObjectiveTask(file, ftbQuest, npcQuest, locationQuest.location, 1);
+            count += ensureLocationObjectiveTask(file, ftbQuest, npcQuest, locationQuest.location2, 2);
+            count += ensureLocationObjectiveTask(file, ftbQuest, npcQuest, locationQuest.location3, 3);
+        }
+
+        if (count > 0) {
+            result.questsUpdated++;
+        }
+
+        return count;
+    }
+
+    private static int ensureItemObjectiveTask(ServerQuestFile file, Quest ftbQuest,
+                                               noppes.npcs.controllers.data.Quest npcQuest, ItemStack stack, int slot,
+                                               QuestItem itemQuest) {
+        String tag = taskTag(npcQuest, "item_" + slot);
+        String title = "Collect " + stack.getCount() + "x " + stack.getDisplayName();
+
+        for (Task task : ftbQuest.tasks) {
+            if (task.getTags().contains(tag) && task instanceof ItemTask) {
+                ItemTask itemTask = (ItemTask) task;
+                boolean changed = updateTaskTitle(itemTask, title);
+                changed |= updateItemTask(itemTask, stack, itemQuest);
+                if (!itemTask.getTags().contains(TAG_SOURCE)) {
+                    itemTask.getTags().add(TAG_SOURCE);
+                    changed = true;
+                }
+                if (changed) {
+                    ftbQuest.clearCachedData();
+                }
+                return 0;
+            }
+        }
+
+        ItemTask itemTask = new ItemTask(ftbQuest);
+        itemTask.id = file.newID();
+        itemTask.title = title;
+        itemTask.getTags().add(TAG_SOURCE);
+        itemTask.getTags().add(tag);
+        updateItemTask(itemTask, stack, itemQuest);
+        itemTask.onCreated();
+        file.refreshIDMap();
+        return 1;
+    }
+
+    private static boolean updateItemTask(ItemTask itemTask, ItemStack stack, QuestItem itemQuest) {
+        boolean changed = false;
+        ItemStack displayStack = stack.copy();
+        displayStack.setCount(1);
+
+        if (itemTask.items.size() != 1 || !ItemStack.areItemStacksEqual(itemTask.items.get(0), displayStack)) {
+            itemTask.items.clear();
+            itemTask.items.add(displayStack);
+            changed = true;
+        }
+
+        long count = Math.max(1, stack.getCount());
+        if (itemTask.count != count) {
+            itemTask.count = count;
+            changed = true;
+        }
+
+        boolean ignoreDamage = itemQuest != null && itemQuest.ignoreDamage;
+        if (itemTask.ignoreDamage != ignoreDamage) {
+            itemTask.ignoreDamage = ignoreDamage;
+            changed = true;
+        }
+
+        if (itemTask.consumeItems != EnumTristate.FALSE) {
+            itemTask.consumeItems = EnumTristate.FALSE;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private static int ensureCheckmarkObjectives(ServerQuestFile file, Quest ftbQuest,
+                                                 noppes.npcs.controllers.data.Quest npcQuest, String prefix,
+                                                 Map<String, Integer> objectives) {
+        if (objectives == null || objectives.isEmpty()) {
+            return 0;
+        }
+
+        int count = 0;
+        int index = 0;
+        for (Map.Entry<String, Integer> entry : objectives.entrySet()) {
+            String name = clean(entry.getKey(), "");
+            if (name.isEmpty()) {
+                continue;
+            }
+
+            int amount = entry.getValue() == null ? 1 : Math.max(1, entry.getValue().intValue());
+            String title = ("kill".equals(prefix) ? "Defeat " : "Complete ") + amount + "x " + name;
+            String tag = taskTag(npcQuest, prefix + "_" + index);
+            count += ensureCheckmarkTask(file, ftbQuest, tag, title);
+            index++;
+        }
+
+        return count;
+    }
+
+    private static int ensureLocationObjectiveTask(ServerQuestFile file, Quest ftbQuest,
+                                                   noppes.npcs.controllers.data.Quest npcQuest, String location,
+                                                   int index) {
+        String cleaned = clean(location, "");
+        if (cleaned.isEmpty()) {
+            return 0;
+        }
+
+        ParsedLocation parsed = parseLocation(cleaned);
+        if (parsed == null) {
+            return ensureCheckmarkTask(file, ftbQuest, taskTag(npcQuest, "location_" + index),
+                    "Reach " + cleaned);
+        }
+
+        String tag = taskTag(npcQuest, "location_" + index);
+        String title = "Reach " + cleaned;
+        for (Task task : ftbQuest.tasks) {
+            if (task.getTags().contains(tag) && task instanceof LocationTask) {
+                LocationTask locationTask = (LocationTask) task;
+                boolean changed = updateTaskTitle(locationTask, title);
+                changed |= updateLocationTask(locationTask, parsed);
+                if (!locationTask.getTags().contains(TAG_SOURCE)) {
+                    locationTask.getTags().add(TAG_SOURCE);
+                    changed = true;
+                }
+                if (changed) {
+                    ftbQuest.clearCachedData();
+                }
+                return 0;
+            }
+        }
+
+        LocationTask locationTask = new LocationTask(ftbQuest);
+        locationTask.id = file.newID();
+        locationTask.title = title;
+        locationTask.getTags().add(TAG_SOURCE);
+        locationTask.getTags().add(tag);
+        updateLocationTask(locationTask, parsed);
+        locationTask.onCreated();
+        file.refreshIDMap();
+        return 1;
+    }
+
+    private static boolean updateLocationTask(LocationTask task, ParsedLocation location) {
+        boolean changed = false;
+        if (task.x != location.x) {
+            task.x = location.x;
+            changed = true;
+        }
+        if (task.y != location.y) {
+            task.y = location.y;
+            changed = true;
+        }
+        if (task.z != location.z) {
+            task.z = location.z;
+            changed = true;
+        }
+        if (task.dimension != location.dimension) {
+            task.dimension = location.dimension;
+            changed = true;
+        }
+        if (task.w != 8 || task.h != 8 || task.d != 8) {
+            task.w = 8;
+            task.h = 8;
+            task.d = 8;
+            changed = true;
+        }
+        if (task.ignoreDimension != location.ignoreDimension) {
+            task.ignoreDimension = location.ignoreDimension;
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static int ensureCheckmarkTask(ServerQuestFile file, Quest ftbQuest, String tag, String title) {
+        for (Task task : ftbQuest.tasks) {
+            if (task.getTags().contains(tag) && task instanceof CheckmarkTask) {
+                boolean changed = updateTaskTitle(task, title);
+                if (!task.getTags().contains(TAG_SOURCE)) {
+                    task.getTags().add(TAG_SOURCE);
+                    changed = true;
+                }
+                if (changed) {
+                    ftbQuest.clearCachedData();
+                }
+                return 0;
+            }
+        }
+
+        CheckmarkTask task = new CheckmarkTask(ftbQuest);
+        task.id = file.newID();
+        task.title = title;
+        task.getTags().add(TAG_SOURCE);
+        task.getTags().add(tag);
+        task.onCreated();
+        file.refreshIDMap();
+        return 1;
+    }
+
+    private static boolean updateTaskTitle(Task task, String title) {
+        if (title.equals(task.title)) {
+            return false;
+        }
+
+        task.title = title;
+        return true;
+    }
+
+    private static ParsedLocation parseLocation(String location) {
+        Matcher matcher = COORDINATE_PATTERN.matcher(location);
+        if (!matcher.find()) {
+            return null;
+        }
+
+        try {
+            int x = Integer.parseInt(matcher.group(1));
+            int y = Integer.parseInt(matcher.group(2));
+            int z = Integer.parseInt(matcher.group(3));
+            int dimension = matcher.group(4) == null ? 0 : Integer.parseInt(matcher.group(4));
+            boolean ignoreDimension = matcher.group(4) == null;
+            return new ParsedLocation(x, y, z, dimension, ignoreDimension);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private static int addDialogTasks(ServerQuestFile file, Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
@@ -278,31 +557,49 @@ public final class CustomNpcQuestImporter {
                 continue;
             }
 
-            if (hasDialogTask(ftbQuest, dialogId.intValue())) {
-                continue;
-            }
-
-            NPCDialogTask dialogTask = new NPCDialogTask(ftbQuest);
-            dialogTask.id = file.newID();
-            dialogTask.npcDialog = dialogId.intValue();
             Dialog dialog = getDialog(dialogController, dialogId.intValue());
-            dialogTask.title = dialog == null ? "Read dialog " + dialogId : clean(dialog.title, "Read dialog " + dialogId);
-            dialogTask.onCreated();
-            file.refreshIDMap();
-            count++;
+            count += ensureDialogTask(file, ftbQuest, npcQuest, dialogId.intValue(), dialog);
         }
 
         return count;
     }
 
-    private static boolean hasDialogTask(Quest ftbQuest, int dialogId) {
+    private static int ensureDialogTask(ServerQuestFile file, Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
+                                        int dialogId, Dialog dialog) {
+        String tag = taskTag(npcQuest, "dialog_" + dialogId);
+        String title = "Dialogue: " + (dialog == null ? "Read dialog " + dialogId : clean(dialog.title, "dialog " + dialogId));
+
         for (Task task : ftbQuest.tasks) {
             if (task instanceof NPCDialogTask && ((NPCDialogTask) task).npcDialog == dialogId) {
-                return true;
+                boolean changed = updateTaskTitle(task, title);
+                if (!task.getTags().contains(TAG_SOURCE)) {
+                    task.getTags().add(TAG_SOURCE);
+                    changed = true;
+                }
+                if (!task.getTags().contains(tag)) {
+                    task.getTags().add(tag);
+                    changed = true;
+                }
+                if (changed) {
+                    ftbQuest.clearCachedData();
+                }
+                return 0;
             }
         }
 
-        return false;
+        NPCDialogTask dialogTask = new NPCDialogTask(ftbQuest);
+        dialogTask.id = file.newID();
+        dialogTask.npcDialog = dialogId;
+        dialogTask.title = title;
+        dialogTask.getTags().add(TAG_SOURCE);
+        dialogTask.getTags().add(tag);
+        dialogTask.onCreated();
+        file.refreshIDMap();
+        return 1;
+    }
+
+    private static String taskTag(noppes.npcs.controllers.data.Quest quest, String key) {
+        return TAG_TASK_PREFIX + quest.id + "_" + key;
     }
 
     private static int addRewards(ServerQuestFile file, Quest ftbQuest, noppes.npcs.controllers.data.Quest npcQuest,
@@ -580,6 +877,89 @@ public final class CustomNpcQuestImporter {
         target.dependencies.add(required);
         target.clearCachedData();
         return 1;
+    }
+
+    private static int layoutImportedQuests(List<noppes.npcs.controllers.data.Quest> npcQuests,
+                                            Map<Integer, Quest> ftbByNpcQuest) {
+        Map<Integer, Integer> orderById = new LinkedHashMap<Integer, Integer>();
+        for (int i = 0; i < npcQuests.size(); i++) {
+            orderById.put(Integer.valueOf(npcQuests.get(i).id), Integer.valueOf(i));
+        }
+
+        Map<Integer, Integer> depthCache = new LinkedHashMap<Integer, Integer>();
+        Map<String, Integer> laneByRankAndCategory = new LinkedHashMap<String, Integer>();
+        Map<String, Integer> laneCountByRank = new LinkedHashMap<String, Integer>();
+        Map<String, Integer> rowCountByLane = new LinkedHashMap<String, Integer>();
+        int changed = 0;
+
+        for (noppes.npcs.controllers.data.Quest npcQuest : npcQuests) {
+            Quest ftbQuest = ftbByNpcQuest.get(Integer.valueOf(npcQuest.id));
+            String rank = getRank(npcQuest);
+            if (ftbQuest == null || rank == null) {
+                continue;
+            }
+
+            String category = categoryTitle(npcQuest);
+            String laneKey = rank + "|" + category;
+            Integer lane = laneByRankAndCategory.get(laneKey);
+            if (lane == null) {
+                Integer nextLane = laneCountByRank.get(rank);
+                lane = Integer.valueOf(nextLane == null ? 0 : nextLane.intValue());
+                laneByRankAndCategory.put(laneKey, lane);
+                laneCountByRank.put(rank, Integer.valueOf(lane.intValue() + 1));
+            }
+
+            int depth = dependencyDepth(npcQuest.id, npcQuests, orderById, depthCache, new LinkedHashSet<Integer>());
+            String rowKey = laneKey + "|" + depth;
+            Integer rowCount = rowCountByLane.get(rowKey);
+            int row = rowCount == null ? 0 : rowCount.intValue();
+            rowCountByLane.put(rowKey, Integer.valueOf(row + 1));
+
+            double targetX = depth * 3.0D;
+            double targetY = lane.intValue() * 4.0D + row * 1.4D;
+            if (Math.abs(ftbQuest.x - targetX) > 0.01D || Math.abs(ftbQuest.y - targetY) > 0.01D) {
+                ftbQuest.x = targetX;
+                ftbQuest.y = targetY;
+                ftbQuest.clearCachedData();
+                changed++;
+            }
+        }
+
+        return changed;
+    }
+
+    private static int dependencyDepth(int npcQuestId, List<noppes.npcs.controllers.data.Quest> quests,
+                                       Map<Integer, Integer> orderById, Map<Integer, Integer> cache,
+                                       Set<Integer> visiting) {
+        Integer cached = cache.get(Integer.valueOf(npcQuestId));
+        if (cached != null) {
+            return cached.intValue();
+        }
+
+        if (!visiting.add(Integer.valueOf(npcQuestId))) {
+            return 0;
+        }
+
+        int depth = 0;
+        for (noppes.npcs.controllers.data.Quest candidate : quests) {
+            if (candidate.nextQuestid == npcQuestId) {
+                depth = Math.max(depth, dependencyDepth(candidate.id, quests, orderById, cache, visiting) + 1);
+            }
+        }
+
+        if (depth == 0) {
+            Integer order = orderById.get(Integer.valueOf(npcQuestId));
+            depth = order == null ? 0 : Math.max(0, order.intValue() / 10);
+        }
+
+        visiting.remove(Integer.valueOf(npcQuestId));
+        cache.put(Integer.valueOf(npcQuestId), Integer.valueOf(depth));
+        return depth;
+    }
+
+    private static String categoryTitle(noppes.npcs.controllers.data.Quest quest) {
+        String category = quest.category == null ? "" : clean(quest.category.title, "");
+        return category.isEmpty() ? "Unsorted" : category;
     }
 
     private static Map<Integer, Quest> findExistingFtbQuests(ServerQuestFile file) {
@@ -964,7 +1344,7 @@ public final class CustomNpcQuestImporter {
         });
 
         for (DialogOption option : options) {
-            if (option != null && option.optionType == 1 && option.dialogId > 0) {
+            if (option != null && option.dialogId > 0) {
                 collectDialogId(option.dialogId, dialogController, ids);
             }
         }
@@ -1061,7 +1441,19 @@ public final class CustomNpcQuestImporter {
         return changed;
     }
 
-    private static String writeRewardBackup(List<noppes.npcs.controllers.data.Quest> quests) throws Exception {
+    private static String writeConversionBackup(ServerQuestFile file, List<noppes.npcs.controllers.data.Quest> quests) throws Exception {
+        File dir = createBackupDirectory("customnpc_quest_import_" + backupStamp());
+        File ftbDir = new File(dir, "ftbquests");
+        if (!ftbDir.exists() && !ftbDir.mkdirs()) {
+            throw new IllegalStateException("Could not create " + ftbDir.getAbsolutePath());
+        }
+
+        file.writeDataFull(ftbDir);
+        writeCustomNpcQuestBackup(new File(dir, "customnpc_quests.json"), quests);
+        return dir.getAbsolutePath();
+    }
+
+    private static File createBackupDirectory(String name) {
         File worldDir = CustomNpcs.getWorldSaveDirectory();
         if (worldDir == null) {
             throw new IllegalStateException("CustomNPC world save directory is not available");
@@ -1072,7 +1464,15 @@ public final class CustomNpcQuestImporter {
             throw new IllegalStateException("Could not create " + dir.getAbsolutePath());
         }
 
-        File file = new File(dir, "customnpc_quest_rewards_" + backupStamp() + ".json");
+        File backup = new File(dir, name);
+        if (!backup.exists() && !backup.mkdirs()) {
+            throw new IllegalStateException("Could not create " + backup.getAbsolutePath());
+        }
+
+        return backup;
+    }
+
+    private static void writeCustomNpcQuestBackup(File file, List<noppes.npcs.controllers.data.Quest> quests) throws Exception {
         NBTTagCompound root = new NBTTagCompound();
         NBTTagList list = new NBTTagList();
 
@@ -1090,7 +1490,101 @@ public final class CustomNpcQuestImporter {
 
         root.setTag("Quests", list);
         NBTJsonUtil.SaveFile(file, root);
-        return file.getAbsolutePath();
+    }
+
+    public static UndoResult undoConversion(String backup) {
+        ServerQuestFile file = ServerQuestFile.INSTANCE;
+        if (file == null) {
+            throw new IllegalStateException("FTB Quests is not ready yet");
+        }
+
+        QuestController questController = QuestController.instance;
+        if (questController == null || questController.quests == null) {
+            throw new IllegalStateException("CustomNPCs quests are not ready yet");
+        }
+
+        File backupDir = resolveBackupDirectory(backup);
+        File ftbDir = new File(backupDir, "ftbquests");
+        File npcFile = new File(backupDir, "customnpc_quests.json");
+        if (!new File(ftbDir, "file.nbt").isFile()) {
+            throw new IllegalStateException("Backup is missing FTB quest data: " + ftbDir.getAbsolutePath());
+        }
+
+        UndoResult result = new UndoResult(backupDir.getAbsolutePath());
+        file.readDataFull(ftbDir);
+        file.refreshIDMap();
+        file.save();
+        file.saveNow();
+        result.ftbRestored = true;
+
+        if (npcFile.isFile()) {
+            try {
+                NBTTagCompound root = NBTJsonUtil.LoadFile(npcFile);
+                NBTTagList quests = root.getTagList("Quests", 10);
+                for (int i = 0; i < quests.tagCount(); i++) {
+                    NBTTagCompound entry = quests.getCompoundTagAt(i);
+                    int questId = entry.getInteger("QuestId");
+                    noppes.npcs.controllers.data.Quest quest = questController.quests.get(Integer.valueOf(questId));
+                    if (quest == null || !entry.hasKey("Quest")) {
+                        result.customNpcMissing++;
+                        continue;
+                    }
+
+                    quest.readNBT(entry.getCompoundTag("Quest"));
+                    quest.save();
+                    result.customNpcRestored++;
+                }
+            } catch (Exception ex) {
+                throw new IllegalStateException("CustomNPC quest restore failed: " + ex.getMessage(), ex);
+            }
+        }
+
+        return result;
+    }
+
+    private static File resolveBackupDirectory(String backup) {
+        if (backup != null && !backup.trim().isEmpty() && !"latest".equalsIgnoreCase(backup.trim())) {
+            File direct = new File(backup);
+            if (direct.isDirectory()) {
+                return direct;
+            }
+
+            File named = new File(backupsRoot(), backup);
+            if (named.isDirectory()) {
+                return named;
+            }
+
+            throw new IllegalStateException("Backup folder not found: " + backup);
+        }
+
+        File[] backups = backupsRoot().listFiles();
+        File latest = null;
+        if (backups != null) {
+            for (File candidate : backups) {
+                if (!candidate.isDirectory() || !candidate.getName().startsWith("customnpc_quest_import_")) {
+                    continue;
+                }
+
+                if (latest == null || candidate.lastModified() > latest.lastModified()) {
+                    latest = candidate;
+                }
+            }
+        }
+
+        if (latest == null) {
+            throw new IllegalStateException("No conversion backups found");
+        }
+
+        return latest;
+    }
+
+    private static File backupsRoot() {
+        File worldDir = CustomNpcs.getWorldSaveDirectory();
+        if (worldDir == null) {
+            throw new IllegalStateException("CustomNPC world save directory is not available");
+        }
+
+        return new File(worldDir, "rebornaddon_quest_backups");
     }
 
     private static String backupStamp() {
@@ -1145,6 +1639,22 @@ public final class CustomNpcQuestImporter {
         return cleaned.isEmpty() ? fallback : cleaned;
     }
 
+    private static final class ParsedLocation {
+        private final int x;
+        private final int y;
+        private final int z;
+        private final int dimension;
+        private final boolean ignoreDimension;
+
+        private ParsedLocation(int x, int y, int z, int dimension, boolean ignoreDimension) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.dimension = dimension;
+            this.ignoreDimension = ignoreDimension;
+        }
+    }
+
     private static final class InventoryReward {
         private final int slot;
         private final ItemStack stack;
@@ -1170,7 +1680,9 @@ public final class CustomNpcQuestImporter {
         public int rewards;
         public int rewardTables;
         public int rewardTableEntries;
+        public int objectiveTasks;
         public int descriptionsUpdated;
+        public int layoutUpdated;
         public int customNpcRewardSources;
         public int customNpcRewardsCleared;
         public String backupFile = "";
@@ -1178,6 +1690,17 @@ public final class CustomNpcQuestImporter {
         private Result(boolean preview, boolean keepCustomNpcRewards) {
             this.preview = preview;
             this.keepCustomNpcRewards = keepCustomNpcRewards;
+        }
+    }
+
+    public static final class UndoResult {
+        public final String backupFile;
+        public boolean ftbRestored;
+        public int customNpcRestored;
+        public int customNpcMissing;
+
+        private UndoResult(String backupFile) {
+            this.backupFile = backupFile;
         }
     }
 }
