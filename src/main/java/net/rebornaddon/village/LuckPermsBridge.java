@@ -154,7 +154,7 @@ public final class LuckPermsBridge {
             return false;
         }
 
-        for (Village village : Village.choices()) {
+        for (Village village : Village.all()) {
             if (village != selected) {
                 dispatchGroupCommand(server, id, village.group(), false);
             }
@@ -188,7 +188,7 @@ public final class LuckPermsBridge {
         }
 
         boolean changed = false;
-        for (Village village : Village.choices()) {
+        for (Village village : Village.all()) {
             changed |= dispatchGroupCommand(server, id, village.group(), false);
         }
         return changed;
@@ -267,7 +267,7 @@ public final class LuckPermsBridge {
             }
 
             Object data = invoke(user, "data");
-            for (Village village : Village.choices()) {
+            for (Village village : Village.all()) {
                 Object node = buildGroupNode(loader, village.group());
                 if (node != null) {
                     invokeNodeMap(data, "remove", loader, node);
@@ -301,7 +301,7 @@ public final class LuckPermsBridge {
             }
 
             Object data = invoke(user, "data");
-            for (Village village : Village.choices()) {
+            for (Village village : Village.all()) {
                 Object node = buildGroupNode(loader, village.group());
                 if (node != null) {
                     invokeNodeMap(data, "remove", loader, node);

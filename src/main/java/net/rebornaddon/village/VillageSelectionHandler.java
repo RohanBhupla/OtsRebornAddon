@@ -76,6 +76,10 @@ public final class VillageSelectionHandler {
         }
     }
 
+    public void assignLocalVillage(EntityPlayerMP player, Village village) {
+        rememberVillage(player, village);
+    }
+
     private static boolean hasSelectedVillage(EntityPlayer player) {
         return persisted(player).getBoolean(SELECTED_KEY);
     }

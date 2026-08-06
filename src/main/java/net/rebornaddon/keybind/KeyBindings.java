@@ -8,6 +8,7 @@ import net.minecraftforge.fml.common.gameevent.InputEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.rebornaddon.gui.GuiHub;
+import net.rebornaddon.village.network.RebornAddonNetwork;
 import org.lwjgl.input.Keyboard;
 
 /**
@@ -19,10 +20,13 @@ import org.lwjgl.input.Keyboard;
 public class KeyBindings {
 
     public static KeyBinding openHub;
+    public static KeyBinding substitution;
 
     public static void register() {
         openHub = new KeyBinding("key.rebornaddon.open_hub", Keyboard.KEY_H, "key.categories.rebornaddon");
+        substitution = new KeyBinding("key.rebornaddon.substitution", Keyboard.KEY_X, "key.categories.rebornaddon");
         ClientRegistry.registerKeyBinding(openHub);
+        ClientRegistry.registerKeyBinding(substitution);
     }
 
     @SubscribeEvent
@@ -31,6 +35,9 @@ public class KeyBindings {
         if (mc.currentScreen != null) return; // don't steal the key while another screen is open
         if (openHub.isPressed()) {
             mc.displayGuiScreen(new GuiHub());
+        }
+        if (substitution.isPressed()) {
+            RebornAddonNetwork.sendSubstitutionUse();
         }
     }
 }

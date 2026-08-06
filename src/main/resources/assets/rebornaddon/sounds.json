@@ -1,0 +1,155 @@
+{
+  "music.wind": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/wind",
+        "stream": true
+      }
+    ]
+  },
+  "music.haruka_kanata": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/haruka_kanata",
+        "stream": true
+      }
+    ]
+  },
+  "music.fake": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/fake",
+        "stream": true
+      }
+    ]
+  },
+  "music.strong_and_strike": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/strong_and_strike",
+        "stream": true
+      }
+    ]
+  },
+  "music.go": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/go",
+        "stream": true
+      }
+    ]
+  },
+  "music.sadness_and_sorrow": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/sadness_and_sorrow",
+        "stream": true
+      }
+    ]
+  },
+  "music.girei": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/girei",
+        "stream": true
+      }
+    ]
+  },
+  "music.lovers": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/lovers",
+        "stream": true
+      }
+    ]
+  },
+  "music.hotaru_no_hikari": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/hotaru_no_hikari",
+        "stream": true
+      }
+    ]
+  },
+  "music.sign": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/sign",
+        "stream": true
+      }
+    ]
+  },
+  "music.silhouette": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/silhouette",
+        "stream": true
+      }
+    ]
+  },
+  "music.heroes_come_back": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/heroes_come_back",
+        "stream": true
+      }
+    ]
+  },
+  "music.blue_bird": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/blue_bird",
+        "stream": true
+      }
+    ]
+  },
+  "music.samidare": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/samidare",
+        "stream": true
+      }
+    ]
+  },
+  "music.sasuke_theme": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/sasuke_theme",
+        "stream": true
+      }
+    ]
+  },
+  "music.nine_tail_demon_fox": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/nine_tail_demon_fox",
+        "stream": true
+      }
+    ]
+  },
+  "music.toumei_datta_sekai": {
+    "category": "record",
+    "sounds": [
+      {
+        "name": "rebornaddon:music/toumei_datta_sekai",
+        "stream": true
+      }
+    ]
+  }
+}

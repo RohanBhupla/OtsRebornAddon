@@ -1,6 +1,7 @@
 package net.rebornaddon.proxy;
 
 import net.rebornaddon.ranked.network.RankedSyncMessage;
+import net.rebornaddon.substitution.SubstitutionEffectMessage;
 
 /**
  * Server-safe base. This is what actually gets loaded on a dedicated server (or the
@@ -26,5 +27,8 @@ public class CommonProxy {
      *  for what actually happens with the data. */
     public void handleRankedSync(RankedSyncMessage message) {
         // no-op server-side
+    }
+
+    public void handleSubstitutionEffect(SubstitutionEffectMessage message) {
     }
 }

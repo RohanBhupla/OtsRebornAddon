@@ -21,7 +21,7 @@ public class CustomNpcQuestImportCommand extends CommandBase {
 
     @Override
     public String getUsage(ICommandSender sender) {
-        return "/importcustomnpcquests [preview] [keepcustomnpcs]";
+        return "/importcustomnpcquests [preview] [keepcustomnpcs] | /importcustomnpcquests undo [latest|backup-folder]";
     }
 
     @Override
@@ -37,7 +37,20 @@ public class CustomNpcQuestImportCommand extends CommandBase {
     @Override
     public List<String> getTabCompletions(MinecraftServer server, ICommandSender sender, String[] args,
             BlockPos targetPos) {
-        if (args.length == 0 || args.length > 2) {
+        if (args.length == 0 || args.length > 3) {
+            return Collections.emptyList();
+        }
+
+        if (args.length == 1) {
+            return getListOfStringsMatchingLastWord(args,
+                    new ArrayList<String>(Arrays.asList("preview", "keepcustomnpcs", "keep", "undo")));
+        }
+
+        if ("undo".equalsIgnoreCase(args[0])) {
+            if (args.length == 2) {
+                return getListOfStringsMatchingLastWord(args,
+                        new ArrayList<String>(Arrays.asList("latest")));
+            }
             return Collections.emptyList();
         }
 
@@ -57,6 +70,17 @@ public class CustomNpcQuestImportCommand extends CommandBase {
 
     @Override
     public void execute(MinecraftServer server, ICommandSender sender, String[] args) throws CommandException {
+        if (args.length > 0 && "undo".equalsIgnoreCase(args[0])) {
+            String backup = args.length <= 1 ? "latest" : joinArgs(args, 1);
+            try {
+                CustomNpcQuestImporter.UndoResult result = CustomNpcQuestImporter.undoConversion(backup);
+                sender.sendMessage(new TextComponentString(formatUndoResult(result)));
+                return;
+            } catch (RuntimeException ex) {
+                throw new CommandException("CustomNPC quest import undo failed: " + ex.getMessage());
+            }
+        }
+
         boolean preview = false;
         boolean keepCustomNpcRewards = false;
 
@@ -87,7 +111,9 @@ public class CustomNpcQuestImportCommand extends CommandBase {
                 + ", quest tasks " + result.questTasks
                 + ", chapters created " + result.chaptersCreated
                 + ", dialog tasks " + result.dialogTasks
+                + ", objective tasks " + result.objectiveTasks
                 + ", dependencies " + result.dependencies
+                + ", layout moved " + result.layoutUpdated
                 + ", rewards " + result.rewards
                 + ", reward tables " + result.rewardTables
                 + ", reward table entries " + result.rewardTableEntries
@@ -104,5 +130,24 @@ public class CustomNpcQuestImportCommand extends CommandBase {
         }
 
         return ", backup " + result.backupFile;
+    }
+
+    private static String formatUndoResult(CustomNpcQuestImporter.UndoResult result) {
+        return "CustomNPC quest import undo: FTB restored " + result.ftbRestored
+                + ", CustomNPC quests restored " + result.customNpcRestored
+                + ", missing " + result.customNpcMissing
+                + ", backup " + result.backupFile
+                + ".";
+    }
+
+    private static String joinArgs(String[] args, int start) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = start; i < args.length; i++) {
+            if (i > start) {
+                builder.append(' ');
+            }
+            builder.append(args[i]);
+        }
+        return builder.toString();
     }
 }

@@ -20,6 +20,8 @@ import net.rebornaddon.compat.ShinobiStatRemovalHandler;
 import net.rebornaddon.compat.VariedCommoditiesRecipePatch;
 import net.rebornaddon.command.CreatorCreditsCommand;
 import net.rebornaddon.command.LuckPermsStatusCommand;
+import net.rebornaddon.command.SubstitutionTestCommand;
+import net.rebornaddon.command.VillageAssignCommand;
 import net.rebornaddon.credits.CreatorCreditsHandler;
 import net.rebornaddon.proxy.CommonProxy;
 import net.rebornaddon.ranked.RankedSystem;
@@ -31,6 +33,8 @@ import net.rebornaddon.ranked.event.RankedEventHandler;
 import net.rebornaddon.ranked.match.MatchManager;
 import net.rebornaddon.ranked.network.RankedNetwork;
 import net.rebornaddon.ranked.queue.QueueManager;
+import net.rebornaddon.substitution.SubstitutionEntities;
+import net.rebornaddon.substitution.SubstitutionHandler;
 import net.rebornaddon.village.VillageSelectionHandler;
 import net.rebornaddon.village.network.RebornAddonNetwork;
 
@@ -48,10 +52,14 @@ public class RebornAddonMod {
     @SidedProxy(clientSide = "net.rebornaddon.proxy.ClientProxy", serverSide = "net.rebornaddon.proxy.CommonProxy")
     public static CommonProxy proxy;
 
+    @Mod.Instance(MODID)
+    public static RebornAddonMod instance;
+
     private RankedEventHandler rankedEventHandler;
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
+        SubstitutionEntities.register();
         proxy.preInit();
         MinecraftForge.EVENT_BUS.register(VariedCommoditiesRecipePatch.INSTANCE);
         RankedNetwork.init();
@@ -69,6 +77,7 @@ public class RebornAddonMod {
         MinecraftForge.EVENT_BUS.register(FireDurationLimiter.INSTANCE);
         MinecraftForge.EVENT_BUS.register(VillageSelectionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(CreatorCreditsHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(SubstitutionHandler.INSTANCE);
         registerClientVisibilityHandler(event);
         ShinobiAddonRestrictionHandler.applyVisibilityRules();
         ShinobiAddonPerformancePatch.apply();
@@ -102,6 +111,8 @@ public class RebornAddonMod {
         event.registerServerCommand(new RankedCommand());
         event.registerServerCommand(new LuckPermsStatusCommand());
         event.registerServerCommand(new CreatorCreditsCommand());
+        event.registerServerCommand(new SubstitutionTestCommand());
+        event.registerServerCommand(new VillageAssignCommand());
         registerCustomNpcQuestImportCommand(event);
 
         rankedEventHandler = new RankedEventHandler();

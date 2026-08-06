@@ -1,0 +1,163 @@
+{
+  "music.menu": {
+    "replace": true,
+    "category": "music",
+    "sounds": [
+      { "name": "rebornaddon:music/wind", "stream": true },
+      { "name": "rebornaddon:music/haruka_kanata", "stream": true },
+      { "name": "rebornaddon:music/fake", "stream": true },
+      { "name": "rebornaddon:music/strong_and_strike", "stream": true },
+      { "name": "rebornaddon:music/go", "stream": true },
+      { "name": "rebornaddon:music/sadness_and_sorrow", "stream": true },
+      { "name": "rebornaddon:music/girei", "stream": true },
+      { "name": "rebornaddon:music/lovers", "stream": true },
+      { "name": "rebornaddon:music/hotaru_no_hikari", "stream": true },
+      { "name": "rebornaddon:music/sign", "stream": true },
+      { "name": "rebornaddon:music/silhouette", "stream": true },
+      { "name": "rebornaddon:music/heroes_come_back", "stream": true },
+      { "name": "rebornaddon:music/blue_bird", "stream": true },
+      { "name": "rebornaddon:music/samidare", "stream": true },
+      { "name": "rebornaddon:music/sasuke_theme", "stream": true },
+      { "name": "rebornaddon:music/nine_tail_demon_fox", "stream": true },
+      { "name": "rebornaddon:music/toumei_datta_sekai", "stream": true }
+    ]
+  },
+  "music.game": {
+    "replace": true,
+    "category": "music",
+    "sounds": [
+      { "name": "rebornaddon:music/wind", "stream": true },
+      { "name": "rebornaddon:music/haruka_kanata", "stream": true },
+      { "name": "rebornaddon:music/fake", "stream": true },
+      { "name": "rebornaddon:music/strong_and_strike", "stream": true },
+      { "name": "rebornaddon:music/go", "stream": true },
+      { "name": "rebornaddon:music/sadness_and_sorrow", "stream": true },
+      { "name": "rebornaddon:music/girei", "stream": true },
+      { "name": "rebornaddon:music/lovers", "stream": true },
+      { "name": "rebornaddon:music/hotaru_no_hikari", "stream": true },
+      { "name": "rebornaddon:music/sign", "stream": true },
+      { "name": "rebornaddon:music/silhouette", "stream": true },
+      { "name": "rebornaddon:music/heroes_come_back", "stream": true },
+      { "name": "rebornaddon:music/blue_bird", "stream": true },
+      { "name": "rebornaddon:music/samidare", "stream": true },
+      { "name": "rebornaddon:music/sasuke_theme", "stream": true },
+      { "name": "rebornaddon:music/nine_tail_demon_fox", "stream": true },
+      { "name": "rebornaddon:music/toumei_datta_sekai", "stream": true }
+    ]
+  },
+  "music.creative": {
+    "replace": true,
+    "category": "music",
+    "sounds": [
+      { "name": "rebornaddon:music/wind", "stream": true },
+      { "name": "rebornaddon:music/haruka_kanata", "stream": true },
+      { "name": "rebornaddon:music/fake", "stream": true },
+      { "name": "rebornaddon:music/strong_and_strike", "stream": true },
+      { "name": "rebornaddon:music/go", "stream": true },
+      { "name": "rebornaddon:music/sadness_and_sorrow", "stream": true },
+      { "name": "rebornaddon:music/girei", "stream": true },
+      { "name": "rebornaddon:music/lovers", "stream": true },
+      { "name": "rebornaddon:music/hotaru_no_hikari", "stream": true },
+      { "name": "rebornaddon:music/sign", "stream": true },
+      { "name": "rebornaddon:music/silhouette", "stream": true },
+      { "name": "rebornaddon:music/heroes_come_back", "stream": true },
+      { "name": "rebornaddon:music/blue_bird", "stream": true },
+      { "name": "rebornaddon:music/samidare", "stream": true },
+      { "name": "rebornaddon:music/sasuke_theme", "stream": true },
+      { "name": "rebornaddon:music/nine_tail_demon_fox", "stream": true },
+      { "name": "rebornaddon:music/toumei_datta_sekai", "stream": true }
+    ]
+  },
+  "music.nether": {
+    "replace": true,
+    "category": "music",
+    "sounds": [
+      { "name": "rebornaddon:music/wind", "stream": true },
+      { "name": "rebornaddon:music/haruka_kanata", "stream": true },
+      { "name": "rebornaddon:music/fake", "stream": true },
+      { "name": "rebornaddon:music/strong_and_strike", "stream": true },
+      { "name": "rebornaddon:music/go", "stream": true },
+      { "name": "rebornaddon:music/sadness_and_sorrow", "stream": true },
+      { "name": "rebornaddon:music/girei", "stream": true },
+      { "name": "rebornaddon:music/lovers", "stream": true },
+      { "name": "rebornaddon:music/hotaru_no_hikari", "stream": true },
+      { "name": "rebornaddon:music/sign", "stream": true },
+      { "name": "rebornaddon:music/silhouette", "stream": true },
+      { "name": "rebornaddon:music/heroes_come_back", "stream": true },
+      { "name": "rebornaddon:music/blue_bird", "stream": true },
+      { "name": "rebornaddon:music/samidare", "stream": true },
+      { "name": "rebornaddon:music/sasuke_theme", "stream": true },
+      { "name": "rebornaddon:music/nine_tail_demon_fox", "stream": true },
+      { "name": "rebornaddon:music/toumei_datta_sekai", "stream": true }
+    ]
+  },
+  "music.end": {
+    "replace": true,
+    "category": "music",
+    "sounds": [
+      { "name": "rebornaddon:music/wind", "stream": true },
+      { "name": "rebornaddon:music/haruka_kanata", "stream": true },
+      { "name": "rebornaddon:music/fake", "stream": true },
+      { "name": "rebornaddon:music/strong_and_strike", "stream": true },
+      { "name": "rebornaddon:music/go", "stream": true },
+      { "name": "rebornaddon:music/sadness_and_sorrow", "stream": true },
+      { "name": "rebornaddon:music/girei", "stream": true },
+      { "name": "rebornaddon:music/lovers", "stream": true },
+      { "name": "rebornaddon:music/hotaru_no_hikari", "stream": true },
+      { "name": "rebornaddon:music/sign", "stream": true },
+      { "name": "rebornaddon:music/silhouette", "stream": true },
+      { "name": "rebornaddon:music/heroes_come_back", "stream": true },
+      { "name": "rebornaddon:music/blue_bird", "stream": true },
+      { "name": "rebornaddon:music/samidare", "stream": true },
+      { "name": "rebornaddon:music/sasuke_theme", "stream": true },
+      { "name": "rebornaddon:music/nine_tail_demon_fox", "stream": true },
+      { "name": "rebornaddon:music/toumei_datta_sekai", "stream": true }
+    ]
+  },
+  "music.dragon": {
+    "replace": true,
+    "category": "music",
+    "sounds": [
+      { "name": "rebornaddon:music/wind", "stream": true },
+      { "name": "rebornaddon:music/haruka_kanata", "stream": true },
+      { "name": "rebornaddon:music/fake", "stream": true },
+      { "name": "rebornaddon:music/strong_and_strike", "stream": true },
+      { "name": "rebornaddon:music/go", "stream": true },
+      { "name": "rebornaddon:music/sadness_and_sorrow", "stream": true },
+      { "name": "rebornaddon:music/girei", "stream": true },
+      { "name": "rebornaddon:music/lovers", "stream": true },
+      { "name": "rebornaddon:music/hotaru_no_hikari", "stream": true },
+      { "name": "rebornaddon:music/sign", "stream": true },
+      { "name": "rebornaddon:music/silhouette", "stream": true },
+      { "name": "rebornaddon:music/heroes_come_back", "stream": true },
+      { "name": "rebornaddon:music/blue_bird", "stream": true },
+      { "name": "rebornaddon:music/samidare", "stream": true },
+      { "name": "rebornaddon:music/sasuke_theme", "stream": true },
+      { "name": "rebornaddon:music/nine_tail_demon_fox", "stream": true },
+      { "name": "rebornaddon:music/toumei_datta_sekai", "stream": true }
+    ]
+  },
+  "music.credits": {
+    "replace": true,
+    "category": "music",
+    "sounds": [
+      { "name": "rebornaddon:music/wind", "stream": true },
+      { "name": "rebornaddon:music/haruka_kanata", "stream": true },
+      { "name": "rebornaddon:music/fake", "stream": true },
+      { "name": "rebornaddon:music/strong_and_strike", "stream": true },
+      { "name": "rebornaddon:music/go", "stream": true },
+      { "name": "rebornaddon:music/sadness_and_sorrow", "stream": true },
+      { "name": "rebornaddon:music/girei", "stream": true },
+      { "name": "rebornaddon:music/lovers", "stream": true },
+      { "name": "rebornaddon:music/hotaru_no_hikari", "stream": true },
+      { "name": "rebornaddon:music/sign", "stream": true },
+      { "name": "rebornaddon:music/silhouette", "stream": true },
+      { "name": "rebornaddon:music/heroes_come_back", "stream": true },
+      { "name": "rebornaddon:music/blue_bird", "stream": true },
+      { "name": "rebornaddon:music/samidare", "stream": true },
+      { "name": "rebornaddon:music/sasuke_theme", "stream": true },
+      { "name": "rebornaddon:music/nine_tail_demon_fox", "stream": true },
+      { "name": "rebornaddon:music/toumei_datta_sekai", "stream": true }
+    ]
+  }
+}
