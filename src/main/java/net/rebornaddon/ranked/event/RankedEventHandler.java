@@ -146,8 +146,12 @@ public class RankedEventHandler {
             elos.add(s.elo);
         }
 
-        for (EntityPlayerMP p : net.minecraftforge.fml.common.FMLCommonHandler.instance()
-                .getMinecraftServerInstance().getPlayerList().getPlayers()) {
+        List<EntityPlayerMP> allOnline = net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                .getMinecraftServerInstance().getPlayerList().getPlayers();
+        List<String> allOnlineNames = new ArrayList<>();
+        for (EntityPlayerMP p : allOnline) allOnlineNames.add(p.getName());
+
+        for (EntityPlayerMP p : allOnline) {
             PlayerStats stats = RankedSystem.eloManager.getStats(p.getUniqueID(), p.getName());
             int state;
             int queuedModeNetId = -1;
@@ -173,10 +177,21 @@ public class RankedEventHandler {
             String pendingInviteFrom = RankedSystem.partyManager.getPendingInviteFromName(p.getUniqueID());
             if (pendingInviteFrom == null) pendingInviteFrom = "";
 
+            long teleportRemainingMs = RankedSystem.partyManager.getTeleportCooldownRemainingMillis(p.getUniqueID());
+            int teleportCooldownSeconds = (int) ((teleportRemainingMs + 999) / 1000); // round up
+
+            List<String> invitablePlayers = new ArrayList<>();
+            for (String name : allOnlineNames) {
+                if (name.equals(p.getName())) continue;
+                if (inParty && partyMemberNames.contains(name)) continue;
+                invitablePlayers.add(name);
+            }
+
             RankedNetwork.CHANNEL.sendTo(new RankedSyncMessage(stats.elo, stats.wins, stats.losses,
                     stats.draws, stats.currentWinStreak, stats.peakElo, state, queuedModeNetId,
                     RankedSystem.seasonManager.getSeasonNumber(), seasonDaysRemaining, names, elos,
-                    inParty, isLeader, partyMemberNames, pendingInviteFrom), p);
+                    inParty, isLeader, partyMemberNames, pendingInviteFrom,
+                    teleportCooldownSeconds, invitablePlayers), p);
         }
     }
 
@@ -208,6 +223,22 @@ public class RankedEventHandler {
         if (!RankedSystem.isReady()) return;
         if (RankedSystem.matchManager.shouldBlockDamage(event.getEntity().getUniqueID())) {
             event.setCanceled(true);
+            return;
+        }
+
+        // Party friendly-fire prevention - applies everywhere, not just in a ranked
+        // match, since party members are never supposed to end up fighting each other
+        // (matchmaking never splits a party across opposing teams either).
+        net.minecraft.entity.Entity attacker = event.getSource().getTrueSource();
+        if (attacker instanceof EntityPlayer) {
+            UUID attackerUuid = attacker.getUniqueID();
+            UUID victimUuid = event.getEntity().getUniqueID();
+            if (!attackerUuid.equals(victimUuid)) {
+                net.rebornaddon.ranked.party.Party attackerParty = RankedSystem.partyManager.getParty(attackerUuid);
+                if (attackerParty != null && attackerParty.contains(victimUuid)) {
+                    event.setCanceled(true);
+                }
+            }
         }
     }
 

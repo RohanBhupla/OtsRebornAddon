@@ -28,6 +28,56 @@ public class PartyManager {
     // invitee UUID -> the invite waiting for them
     private final Map<UUID, PendingInvite> pendingInvites = new HashMap<>();
 
+    private static final long TELEPORT_COOLDOWN_MILLIS = 2 * 60 * 1000L;
+    private final Map<UUID, Long> lastTeleportMillis = new HashMap<>();
+
+    public long getTeleportCooldownRemainingMillis(UUID uuid) {
+        Long last = lastTeleportMillis.get(uuid);
+        if (last == null) return 0;
+        long elapsed = System.currentTimeMillis() - last;
+        return Math.max(0, TELEPORT_COOLDOWN_MILLIS - elapsed);
+    }
+
+    public void recordTeleport(UUID uuid) {
+        lastTeleportMillis.put(uuid, System.currentTimeMillis());
+    }
+
+    /** Returns null on success, or a player-facing error message on failure. */
+    public String kickMember(UUID leaderUuid, UUID targetUuid) {
+        Party party = getParty(leaderUuid);
+        if (party == null || !party.isLeader(leaderUuid)) {
+            return "Only the party leader can kick members.";
+        }
+        if (leaderUuid.equals(targetUuid)) {
+            return "You can't kick yourself - use Leave Party instead.";
+        }
+        if (!party.contains(targetUuid)) {
+            return "That player isn't in your party.";
+        }
+
+        boolean nowEmpty = party.removeMember(targetUuid);
+        partyByMember.remove(targetUuid);
+        if (nowEmpty) partyByMember.remove(leaderUuid);
+        return null;
+    }
+
+    /** Returns null on success, or a player-facing error message on failure. */
+    public String promoteMember(UUID leaderUuid, UUID targetUuid) {
+        Party party = getParty(leaderUuid);
+        if (party == null || !party.isLeader(leaderUuid)) {
+            return "Only the party leader can promote members.";
+        }
+        if (leaderUuid.equals(targetUuid)) {
+            return "You're already the leader.";
+        }
+        if (!party.contains(targetUuid)) {
+            return "That player isn't in your party.";
+        }
+
+        party.promoteToLeader(targetUuid);
+        return null;
+    }
+
     public Party getParty(UUID uuid) {
         return partyByMember.get(uuid);
     }
@@ -114,6 +164,7 @@ public class PartyManager {
     public void handleDisconnect(UUID uuid) {
         leaveParty(uuid);
         pendingInvites.remove(uuid);
+        lastTeleportMillis.remove(uuid);
     }
 
     public void updateMemberName(UUID uuid, String currentName) {

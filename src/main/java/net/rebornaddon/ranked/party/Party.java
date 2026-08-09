@@ -75,4 +75,15 @@ public class Party {
         int idx = memberUuids.indexOf(uuid);
         if (idx >= 0) memberNames.set(idx, currentName);
     }
+
+    /** Moves the given member to the front of the list, making them the new leader.
+     *  No-op if they're not actually in this party. */
+    public void promoteToLeader(UUID uuid) {
+        int idx = memberUuids.indexOf(uuid);
+        if (idx <= 0) return; // already leader, or not a member at all
+        UUID movedUuid = memberUuids.remove(idx);
+        String movedName = memberNames.remove(idx);
+        memberUuids.add(0, movedUuid);
+        memberNames.add(0, movedName);
+    }
 }

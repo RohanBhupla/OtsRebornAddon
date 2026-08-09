@@ -33,6 +33,9 @@ public class QueueActionMessage implements IMessage {
     public static final int ACTION_PARTY_INVITE = 3;
     public static final int ACTION_PARTY_ACCEPT = 4;
     public static final int ACTION_PARTY_LEAVE = 5;
+    public static final int ACTION_PARTY_TELEPORT = 6;
+    public static final int ACTION_PARTY_KICK = 7;
+    public static final int ACTION_PARTY_PROMOTE = 8;
 
     private int action;
     private int modeNetId;    // only meaningful when action == ACTION_QUEUE
@@ -96,6 +99,15 @@ public class QueueActionMessage implements IMessage {
                 case ACTION_PARTY_LEAVE:
                     RankedSystem.partyManager.leaveParty(player.getUniqueID());
                     player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "You left your party."));
+                    break;
+                case ACTION_PARTY_TELEPORT:
+                    handlePartyTeleport(message, player);
+                    break;
+                case ACTION_PARTY_KICK:
+                    handlePartyKick(message, player);
+                    break;
+                case ACTION_PARTY_PROMOTE:
+                    handlePartyPromote(message, player);
                     break;
                 default:
                     break;
@@ -185,6 +197,103 @@ public class QueueActionMessage implements IMessage {
                 return;
             }
             player.sendMessage(new TextComponentString(TextFormatting.GREEN + "Joined " + inviterName + "'s party!"));
+        }
+
+        private void handlePartyTeleport(QueueActionMessage message, EntityPlayerMP player) {
+            UUID uuid = player.getUniqueID();
+            Party party = RankedSystem.partyManager.getParty(uuid);
+            if (party == null) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED + "You're not in a party."));
+                return;
+            }
+
+            MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+            EntityPlayerMP target = server.getPlayerList().getPlayerByUsername(message.targetName);
+            if (target == null || !party.contains(target.getUniqueID())) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "That player isn't in your party (or isn't online)."));
+                return;
+            }
+            if (target.getUniqueID().equals(uuid)) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED + "You can't teleport to yourself."));
+                return;
+            }
+
+            if (RankedSystem.matchManager.isInMatch(uuid) || RankedSystem.matchManager.isInMatch(target.getUniqueID())) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "Can't use party teleport while either of you is in an active match."));
+                return;
+            }
+
+            long remainingMs = RankedSystem.partyManager.getTeleportCooldownRemainingMillis(uuid);
+            if (remainingMs > 0) {
+                long remainingSec = (remainingMs / 1000) + 1;
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "Party teleport is on cooldown - " + remainingSec + "s remaining."));
+                return;
+            }
+
+            if (player.dimension != target.dimension) {
+                player.changeDimension(target.dimension);
+            }
+            player.connection.setPlayerLocation(target.posX, target.posY, target.posZ, target.rotationYaw, target.rotationPitch);
+            RankedSystem.partyManager.recordTeleport(uuid);
+            player.sendMessage(new TextComponentString(TextFormatting.GREEN + "Teleported to " + target.getName() + "."));
+        }
+
+        private void handlePartyKick(QueueActionMessage message, EntityPlayerMP player) {
+            MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+            EntityPlayerMP target = server.getPlayerList().getPlayerByUsername(message.targetName);
+            UUID targetUuid = target != null ? target.getUniqueID() : findPartyMemberUuidByName(player, message.targetName);
+            if (targetUuid == null) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED + "Couldn't find that party member."));
+                return;
+            }
+
+            String error = RankedSystem.partyManager.kickMember(player.getUniqueID(), targetUuid);
+            if (error != null) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED + error));
+                return;
+            }
+
+            player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "Removed " + message.targetName + " from the party."));
+            if (target != null) {
+                target.sendMessage(new TextComponentString(TextFormatting.RED + "You were removed from the party."));
+            }
+        }
+
+        private void handlePartyPromote(QueueActionMessage message, EntityPlayerMP player) {
+            MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+            EntityPlayerMP target = server.getPlayerList().getPlayerByUsername(message.targetName);
+            UUID targetUuid = target != null ? target.getUniqueID() : findPartyMemberUuidByName(player, message.targetName);
+            if (targetUuid == null) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED + "Couldn't find that party member."));
+                return;
+            }
+
+            String error = RankedSystem.partyManager.promoteMember(player.getUniqueID(), targetUuid);
+            if (error != null) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED + error));
+                return;
+            }
+
+            player.sendMessage(new TextComponentString(TextFormatting.GREEN + message.targetName + " is now the party leader."));
+            if (target != null) {
+                target.sendMessage(new TextComponentString(TextFormatting.GOLD + "You are now the party leader."));
+            }
+        }
+
+        /** Fallback lookup for kick/promote if the target happens to be offline right
+         *  now - matches by cached party member name rather than requiring them online. */
+        private UUID findPartyMemberUuidByName(EntityPlayerMP requester, String targetName) {
+            Party party = RankedSystem.partyManager.getParty(requester.getUniqueID());
+            if (party == null) return null;
+            List<UUID> uuids = party.getMemberUuids();
+            List<String> names = party.getMemberNames();
+            for (int i = 0; i < names.size(); i++) {
+                if (names.get(i).equalsIgnoreCase(targetName)) return uuids.get(i);
+            }
+            return null;
         }
     }
 }

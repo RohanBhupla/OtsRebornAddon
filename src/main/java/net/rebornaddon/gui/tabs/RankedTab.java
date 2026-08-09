@@ -15,12 +15,12 @@ import net.rebornaddon.ranked.network.QueueActionMessage;
 import net.rebornaddon.ranked.network.RankedNetwork;
 import org.lwjgl.opengl.GL11;
 
+import java.util.Collections;
 import java.util.List;
 
 /**
  * Has its own internal sub-tab bar (Battle / Party, Leaderboard to follow later) -
- * same nested-tab pattern as the outer hub, just one level deeper. Battle is the
- * original queue/leave/forfeit content; Party is new.
+ * same nested-tab pattern as the outer hub, just one level deeper.
  */
 public class RankedTab implements HubTab {
 
@@ -40,9 +40,19 @@ public class RankedTab implements HubTab {
     private static final int BTN_PARTY_ACCEPT = 121;
     private static final int BTN_PARTY_LEAVE = 122;
 
+    // Per-member-row action buttons, one ID per party slot (max 3 members)
+    private static final int BTN_PARTY_TP_BASE = 130;       // 130-132
+    private static final int BTN_PARTY_KICK_BASE = 140;      // 140-142
+    private static final int BTN_PARTY_PROMOTE_BASE = 150;   // 150-152
+
+    // Clickable online-player invite shortcuts, one ID per visible slot
+    private static final int BTN_INVITE_ONLINE_BASE = 160;   // 160-163
+    private static final int MAX_VISIBLE_INVITE_CANDIDATES = 4;
+
     private static final int LEFT_COL_WIDTH = 170;
     private static final int COLUMN_GAP = 16;
     private static final int SUBTAB_BAR_HEIGHT = 24;
+    private static final int MEMBER_ROW_HEIGHT = 20;
 
     private int selectedSubTab = 0; // 0 = Battle, 1 = Party
 
@@ -50,10 +60,18 @@ public class RankedTab implements HubTab {
     private long statusMessageExpireAt = 0;
     private long forfeitArmedUntil = 0; // 0 = not armed; otherwise a click-again window
 
-    // Created once and kept alive across rebuilds so partial typing never gets lost -
-    // its position is fixed regardless of other Party sub-tab state, so it never
-    // needs repositioning either.
+    // Created once and kept alive across rebuilds so partial typing never gets lost.
     private GuiTextField inviteNameField;
+
+    // Snapshots taken at the moment buttons were last built, so handleButtonClick can
+    // reliably map "which slot was clicked" back to a name even if the underlying
+    // data changes a moment later (next sync tick, etc).
+    private List<String> lastBuiltMemberNames = Collections.emptyList();
+    private List<String> lastBuiltInviteCandidates = Collections.emptyList();
+
+    // Where the member list starts, in both buildButtons and drawContent - kept as a
+    // field so the two stay in sync without duplicating the layout math twice.
+    private int memberListStartY = 0;
 
     @Override
     public String getTabName() {
@@ -131,14 +149,30 @@ public class RankedTab implements HubTab {
 
     private void buildPartyButtons(List<GuiButton> buttonList, int left, int top, int width, int height) {
         FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
+        int rightColX = left + LEFT_COL_WIDTH + COLUMN_GAP;
+        int rightColWidth = width - LEFT_COL_WIDTH - COLUMN_GAP;
+        int rowRight = rightColX + rightColWidth;
 
-        if (inviteNameField == null) {
-            inviteNameField = new GuiTextField(0, fr, left, top, LEFT_COL_WIDTH, 18);
-            inviteNameField.setMaxStringLength(16); // Minecraft usernames are never longer than this
+        // ---- LEFT COLUMN: invite ----
+        int y = top;
+        List<String> candidates = RankedClientData.getInvitablePlayers();
+        lastBuiltInviteCandidates = candidates;
+        int shownCandidates = Math.min(candidates.size(), MAX_VISIBLE_INVITE_CANDIDATES);
+        for (int i = 0; i < shownCandidates; i++) {
+            buttonList.add(new ThemedButton(BTN_INVITE_ONLINE_BASE + i, left, y, LEFT_COL_WIDTH, 20,
+                    candidates.get(i), Theme.PURPLE_DARK, Theme.PURPLE_MID, Theme.BUTTON_TEXT));
+            y += 24;
+        }
+        if (shownCandidates == 0) {
+            y += 14; // room for the "no one else online" text drawn in drawContent
         }
 
-        int y = top + 24;
-        buttonList.add(new ThemedButton(BTN_PARTY_INVITE, left, y, LEFT_COL_WIDTH, 22, "Invite",
+        if (inviteNameField == null) {
+            inviteNameField = new GuiTextField(0, fr, left, y, LEFT_COL_WIDTH, 18);
+            inviteNameField.setMaxStringLength(16); // Minecraft usernames are never longer than this
+        }
+        y += 22;
+        buttonList.add(new ThemedButton(BTN_PARTY_INVITE, left, y, LEFT_COL_WIDTH, 22, "Invite by Name",
                 Theme.RANKED_RED_DARK, Theme.RANKED_RED, Theme.BUTTON_TEXT));
         y += 30;
 
@@ -147,16 +181,86 @@ public class RankedTab implements HubTab {
                     Theme.PURPLE_DARK, Theme.PURPLE_MID, Theme.BUTTON_TEXT));
         }
 
+        // ---- RIGHT COLUMN: pending invite + member list ----
+        int ry = top;
         String pendingFrom = RankedClientData.getPendingInviteFrom();
         if (pendingFrom != null) {
-            int rightColX = left + LEFT_COL_WIDTH + COLUMN_GAP;
-            buttonList.add(new ThemedButton(BTN_PARTY_ACCEPT, rightColX, top, 140, 22,
+            buttonList.add(new ThemedButton(BTN_PARTY_ACCEPT, rightColX, ry, rightColWidth, 22,
                     "Accept " + pendingFrom + "'s Invite", Theme.SUCCESS, 0xFF66BB6A, Theme.BUTTON_TEXT));
+            ry += 28;
+        }
+
+        if (!RankedClientData.isInParty()) {
+            lastBuiltMemberNames = Collections.emptyList();
+            return;
+        }
+
+        ry += 14; // "Party Members" header, drawn in drawContent
+        memberListStartY = ry;
+
+        List<String> members = RankedClientData.getPartyMemberNames();
+        lastBuiltMemberNames = members;
+        boolean amLeader = RankedClientData.isPartyLeader();
+        String myName = Minecraft.getMinecraft().player.getName();
+        int cooldownSeconds = RankedClientData.getPartyTeleportCooldownSeconds();
+
+        int btnW = 42;
+        int btnH = 16;
+        int btnGap = 2;
+
+        for (int i = 0; i < members.size(); i++) {
+            String name = members.get(i);
+            boolean isSelf = name.equalsIgnoreCase(myName);
+            int rowY = ry + i * MEMBER_ROW_HEIGHT;
+            int cursorX = rowRight;
+
+            if (!isSelf && amLeader) {
+                cursorX -= btnW;
+                buttonList.add(new ThemedButton(BTN_PARTY_PROMOTE_BASE + i, cursorX, rowY, btnW, btnH, "Lead",
+                        Theme.PURPLE_DARK, Theme.PURPLE_MID, Theme.BUTTON_TEXT));
+                cursorX -= btnGap;
+
+                cursorX -= btnW;
+                buttonList.add(new ThemedButton(BTN_PARTY_KICK_BASE + i, cursorX, rowY, btnW, btnH, "Kick",
+                        Theme.DANGER, 0xFFE05A4B, Theme.BUTTON_TEXT));
+                cursorX -= btnGap;
+            }
+
+            if (!isSelf) {
+                cursorX -= btnW;
+                String tpLabel = cooldownSeconds > 0 ? cooldownSeconds + "s" : "TP";
+                ThemedButton tpBtn = new ThemedButton(BTN_PARTY_TP_BASE + i, cursorX, rowY, btnW, btnH, tpLabel,
+                        Theme.RANKED_RED_DARK, Theme.RANKED_RED, Theme.BUTTON_TEXT);
+                if (cooldownSeconds > 0) tpBtn.enabled = false;
+                buttonList.add(tpBtn);
+            }
         }
     }
 
     @Override
     public boolean handleButtonClick(int buttonId) {
+        if (buttonId >= BTN_INVITE_ONLINE_BASE && buttonId < BTN_INVITE_ONLINE_BASE + MAX_VISIBLE_INVITE_CANDIDATES) {
+            int slot = buttonId - BTN_INVITE_ONLINE_BASE;
+            if (slot < lastBuiltInviteCandidates.size()) {
+                String target = lastBuiltInviteCandidates.get(slot);
+                RankedNetwork.CHANNEL.sendToServer(new QueueActionMessage(QueueActionMessage.ACTION_PARTY_INVITE, 0, target));
+                showStatus("Invite sent to " + target);
+            }
+            return true;
+        }
+        if (buttonId >= BTN_PARTY_TP_BASE && buttonId < BTN_PARTY_TP_BASE + 3) {
+            sendPartyMemberAction(buttonId - BTN_PARTY_TP_BASE, QueueActionMessage.ACTION_PARTY_TELEPORT, "Teleporting to ");
+            return true;
+        }
+        if (buttonId >= BTN_PARTY_KICK_BASE && buttonId < BTN_PARTY_KICK_BASE + 3) {
+            sendPartyMemberAction(buttonId - BTN_PARTY_KICK_BASE, QueueActionMessage.ACTION_PARTY_KICK, "Kicking ");
+            return true;
+        }
+        if (buttonId >= BTN_PARTY_PROMOTE_BASE && buttonId < BTN_PARTY_PROMOTE_BASE + 3) {
+            sendPartyMemberAction(buttonId - BTN_PARTY_PROMOTE_BASE, QueueActionMessage.ACTION_PARTY_PROMOTE, "Promoting ");
+            return true;
+        }
+
         switch (buttonId) {
             case SUBTAB_BATTLE:
                 selectedSubTab = 0;
@@ -215,6 +319,13 @@ public class RankedTab implements HubTab {
             default:
                 return false;
         }
+    }
+
+    private void sendPartyMemberAction(int slot, int action, String statusPrefix) {
+        if (slot < 0 || slot >= lastBuiltMemberNames.size()) return;
+        String targetName = lastBuiltMemberNames.get(slot);
+        RankedNetwork.CHANNEL.sendToServer(new QueueActionMessage(action, 0, targetName));
+        showStatus(statusPrefix + targetName);
     }
 
     @Override
@@ -323,42 +434,50 @@ public class RankedTab implements HubTab {
     }
 
     private void drawPartyContent(FontRenderer fr, int leftColX, int rightColX, int top, int rightColWidth, int height) {
+        // ---- LEFT COLUMN ----
+        int ly = top;
+        List<String> candidates = lastBuiltInviteCandidates;
+        int shownCandidates = Math.min(candidates.size(), MAX_VISIBLE_INVITE_CANDIDATES);
+        if (shownCandidates == 0) {
+            fr.drawString("\u00a77No one else online", leftColX, ly, Theme.TEXT_MUTED);
+        }
+        // (candidate buttons render themselves - nothing extra to draw here for them)
+
         if (inviteNameField != null) {
             inviteNameField.drawTextBox();
         }
 
+        // ---- RIGHT COLUMN ----
         int centerX = rightColX + rightColWidth / 2;
         int y = top;
 
         String pendingFrom = RankedClientData.getPendingInviteFrom();
         if (pendingFrom != null) {
-            drawCentered(fr, "\u00a7e" + pendingFrom + " invited you!", centerX, y, Theme.RANKED_RED_HOVER);
-            y += 28; // leave room for the Accept button drawn at this same top position
+            y += 28; // the Accept button itself carries the message - just reserve its row
         }
 
         if (!RankedClientData.isInParty()) {
             drawCentered(fr, "\u00a77You're not in a party", centerX, y, Theme.TEXT_MUTED);
-            drawCentered(fr, "\u00a77Type a name and click Invite", centerX, y + 12, Theme.TEXT_MUTED);
+            drawCentered(fr, "\u00a77Click a name or type one to invite", centerX, y + 12, Theme.TEXT_MUTED);
             return;
         }
 
         drawCentered(fr, "\u00a7fParty Members", centerX, y, Theme.TEXT_LIGHT);
-        y += 14;
 
-        List<String> members = RankedClientData.getPartyMemberNames();
+        List<String> members = lastBuiltMemberNames;
         boolean amLeader = RankedClientData.isPartyLeader();
         for (int i = 0; i < members.size(); i++) {
             String name = members.get(i);
             String label = (i == 0 ? "\u00a76\u2605 " : "\u00a7f  ") + name; // star marks the leader
-            fr.drawString(label, rightColX, y, i == 0 ? Theme.GOLD : Theme.TEXT_LIGHT);
-            y += 13;
+            int rowY = memberListStartY + i * MEMBER_ROW_HEIGHT;
+            fr.drawString(label, rightColX, rowY + 4, i == 0 ? Theme.GOLD : Theme.TEXT_LIGHT);
         }
 
-        y += 6;
+        int afterRows = memberListStartY + members.size() * MEMBER_ROW_HEIGHT + 6;
         if (amLeader) {
-            drawCentered(fr, "\u00a77You're the party leader", centerX, y, Theme.TEXT_MUTED);
+            drawCentered(fr, "\u00a77You're the party leader", centerX, afterRows, Theme.TEXT_MUTED);
         } else {
-            drawCentered(fr, "\u00a77Only the leader can start the queue", centerX, y, Theme.TEXT_MUTED);
+            drawCentered(fr, "\u00a77Only the leader can start the queue", centerX, afterRows, Theme.TEXT_MUTED);
         }
     }
 

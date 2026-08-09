@@ -36,6 +36,8 @@ public class RankedSyncMessage implements IMessage {
     private boolean isPartyLeader;
     private List<String> partyMemberNames = new ArrayList<>();
     private String pendingInviteFrom = ""; // empty = no pending invite waiting
+    private int partyTeleportCooldownSeconds; // 0 = ready to use
+    private List<String> onlinePlayerNames = new ArrayList<>(); // for the invite picker, excludes self and current party members
 
     public RankedSyncMessage() {} // required no-arg constructor
 
@@ -43,7 +45,8 @@ public class RankedSyncMessage implements IMessage {
                               int matchState, int queuedModeNetId, int seasonNumber, int seasonDaysRemaining,
                               List<String> leaderboardNames, List<Integer> leaderboardElos,
                               boolean inParty, boolean isPartyLeader, List<String> partyMemberNames,
-                              String pendingInviteFrom) {
+                              String pendingInviteFrom, int partyTeleportCooldownSeconds,
+                              List<String> onlinePlayerNames) {
         this.elo = elo;
         this.wins = wins;
         this.losses = losses;
@@ -60,6 +63,8 @@ public class RankedSyncMessage implements IMessage {
         this.isPartyLeader = isPartyLeader;
         this.partyMemberNames = partyMemberNames;
         this.pendingInviteFrom = pendingInviteFrom == null ? "" : pendingInviteFrom;
+        this.partyTeleportCooldownSeconds = partyTeleportCooldownSeconds;
+        this.onlinePlayerNames = onlinePlayerNames;
     }
 
     @Override
@@ -87,6 +92,11 @@ public class RankedSyncMessage implements IMessage {
             ByteBufUtils.writeUTF8String(buf, name);
         }
         ByteBufUtils.writeUTF8String(buf, pendingInviteFrom);
+        buf.writeInt(partyTeleportCooldownSeconds);
+        buf.writeInt(onlinePlayerNames.size());
+        for (String name : onlinePlayerNames) {
+            ByteBufUtils.writeUTF8String(buf, name);
+        }
     }
 
     @Override
@@ -117,6 +127,12 @@ public class RankedSyncMessage implements IMessage {
             partyMemberNames.add(ByteBufUtils.readUTF8String(buf));
         }
         pendingInviteFrom = ByteBufUtils.readUTF8String(buf);
+        partyTeleportCooldownSeconds = buf.readInt();
+        int onlineCount = buf.readInt();
+        onlinePlayerNames = new ArrayList<>();
+        for (int i = 0; i < onlineCount; i++) {
+            onlinePlayerNames.add(ByteBufUtils.readUTF8String(buf));
+        }
     }
 
     /** Deliberately NOT SideOnly, and deliberately doesn't reference Minecraft or
@@ -147,4 +163,6 @@ public class RankedSyncMessage implements IMessage {
     public boolean isPartyLeader() { return isPartyLeader; }
     public List<String> getPartyMemberNames() { return partyMemberNames; }
     public String getPendingInviteFrom() { return pendingInviteFrom; }
+    public int getPartyTeleportCooldownSeconds() { return partyTeleportCooldownSeconds; }
+    public List<String> getOnlinePlayerNames() { return onlinePlayerNames; }
 }
