@@ -5,9 +5,12 @@ import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.init.MobEffects;
+import net.minecraft.potion.PotionEffect;
 import net.minecraft.util.EnumParticleTypes;
 import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.AxisAlignedBB;
@@ -23,6 +26,7 @@ import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import net.rebornaddon.compat.MinecraftAccess;
+import net.rebornaddon.config.RebornAddonConfig;
 import net.rebornaddon.village.LuckPermsBridge;
 import net.rebornaddon.village.Village;
 import net.rebornaddon.village.network.RebornAddonNetwork;
@@ -58,7 +62,7 @@ public final class SubstitutionHandler {
         World world = player.world;
         long now = world.getTotalWorldTime();
         Long cooldown = cooldowns.get(player.getUniqueID());
-        if (cooldown != null && cooldown.longValue() > now) {
+        if (!player.capabilities.isCreativeMode && cooldown != null && cooldown.longValue() > now) {
             long seconds = Math.max(1L, (cooldown.longValue() - now + 19L) / 20L);
             sendActionBarError(player, "Substitution is on cooldown for " + seconds + "s.");
             return;
@@ -75,7 +79,7 @@ public final class SubstitutionHandler {
             return;
         }
 
-        if (!performSubstitution(player, village, true)) {
+        if (!performSubstitution(player, village, !player.capabilities.isCreativeMode)) {
             refundChakra(player);
         }
     }
@@ -115,6 +119,10 @@ public final class SubstitutionHandler {
     }
 
     private boolean performSubstitution(EntityPlayerMP player, Village village, boolean applyCooldown) {
+        if (isSusanoo(player.getRidingEntity())) {
+            sendActionBarError(player, "Substitution cannot be used while inside Susanoo.");
+            return false;
+        }
         Vec3d target = findTeleportTarget(player);
         if (target == null) {
             sendActionBarError(player, "No safe substitution point found.");
@@ -142,6 +150,15 @@ public final class SubstitutionHandler {
             playArrivalEffects(serverWorld, village, target.x, target.y + 1.0D, target.z);
         }
         return true;
+    }
+
+    private static boolean isSusanoo(Entity entity) {
+        for (Class<?> type = entity == null ? null : entity.getClass(); type != null; type = type.getSuperclass()) {
+            if (type.getSimpleName().toLowerCase(java.util.Locale.ROOT).contains("susanoo")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @SubscribeEvent
@@ -184,6 +201,10 @@ public final class SubstitutionHandler {
     }
 
     public void onDecoyHit(EntitySubstitutionDecoy decoy) {
+        onDecoyHit(decoy, null);
+    }
+
+    public void onDecoyHit(EntitySubstitutionDecoy decoy, Entity attacker) {
         if (decoy == null) {
             return;
         }
@@ -196,6 +217,33 @@ public final class SubstitutionHandler {
         if (decoy.world instanceof WorldServer) {
             playHitEffects((WorldServer) decoy.world, decoy.getVillage(),
                     decoy.posX, decoy.posY + 1.0D, decoy.posZ);
+        }
+
+        applyStun(decoy, attacker);
+    }
+
+    private static void applyStun(EntitySubstitutionDecoy decoy, Entity attacker) {
+        if (!(attacker instanceof EntityLivingBase) || RebornAddonConfig.substitutionStunTicks <= 0) {
+            return;
+        }
+
+        EntityLivingBase living = (EntityLivingBase) attacker;
+        UUID ownerId = decoy.getOwnerId();
+        if (ownerId != null && ownerId.equals(living.getUniqueID())) {
+            return;
+        }
+        if (living instanceof EntityPlayer && ((EntityPlayer) living).capabilities.isCreativeMode) {
+            return;
+        }
+
+        int duration = RebornAddonConfig.substitutionStunTicks;
+        living.addPotionEffect(new PotionEffect(MobEffects.SLOWNESS, duration, 9, false, false));
+        living.addPotionEffect(new PotionEffect(MobEffects.MINING_FATIGUE, duration, 4, false, false));
+        living.addPotionEffect(new PotionEffect(MobEffects.WEAKNESS, duration, 4, false, false));
+        living.motionX = 0.0D;
+        living.motionZ = 0.0D;
+        if (living instanceof EntityPlayerMP) {
+            sendActionBarError((EntityPlayerMP) living, "The substitution caught you off guard.");
         }
     }
 

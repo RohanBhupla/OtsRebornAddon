@@ -6,13 +6,18 @@ import net.minecraft.client.audio.MusicTicker;
 import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.audio.SoundHandler;
 import net.minecraft.util.SoundCategory;
+import net.minecraftforge.client.event.sound.PlaySoundEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.rebornaddon.music.RebornMusic;
+import net.rebornaddon.config.RebornAddonConfig;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 @SideOnly(Side.CLIENT)
 public final class RebornMusicController {
@@ -23,6 +28,9 @@ public final class RebornMusicController {
     private ISound currentTrack;
     private int trackIndex = -1;
     private int trackTicks;
+    private int jukeboxCheckTicks;
+    private boolean jukeboxNearby;
+    private final List<ISound> activeRecords = new ArrayList<ISound>();
 
     private RebornMusicController() {
     }
@@ -35,8 +43,10 @@ public final class RebornMusicController {
 
         Minecraft minecraft = Minecraft.getMinecraft();
         suppressVanillaTicker(minecraft);
+        updateJukeboxState(minecraft);
         if (minecraft.gameSettings.getSoundLevel(SoundCategory.MASTER) <= 0.0F
-                || minecraft.gameSettings.getSoundLevel(SoundCategory.MUSIC) <= 0.0F) {
+                || minecraft.gameSettings.getSoundLevel(SoundCategory.MUSIC) <= 0.0F
+                || jukeboxNearby) {
             stopCurrent(minecraft.getSoundHandler());
             return;
         }
@@ -51,6 +61,44 @@ public final class RebornMusicController {
         if (trackTicks > 20 && !sounds.isSoundPlaying(currentTrack)) {
             currentTrack = null;
             playNext(sounds);
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlaySound(PlaySoundEvent event) {
+        ISound sound = event.getSound();
+        if (sound != null && sound.getCategory() == SoundCategory.RECORDS) {
+            activeRecords.add(sound);
+            jukeboxNearby = true;
+        }
+    }
+
+    private void updateJukeboxState(Minecraft minecraft) {
+        if (minecraft.world == null || minecraft.player == null) {
+            jukeboxNearby = false;
+            jukeboxCheckTicks = 0;
+            activeRecords.clear();
+            return;
+        }
+        if (jukeboxCheckTicks++ % 10 != 0) {
+            return;
+        }
+
+        double radius = RebornAddonConfig.jukeboxMusicRadius;
+        double maxDistance = radius * radius;
+        jukeboxNearby = false;
+        for (Iterator<ISound> iterator = activeRecords.iterator(); iterator.hasNext();) {
+            ISound sound = iterator.next();
+            if (!minecraft.getSoundHandler().isSoundPlaying(sound)) {
+                iterator.remove();
+                continue;
+            }
+            double dx = sound.getXPosF() - minecraft.player.posX;
+            double dy = sound.getYPosF() - minecraft.player.posY;
+            double dz = sound.getZPosF() - minecraft.player.posZ;
+            if (dx * dx + dy * dy + dz * dz <= maxDistance) {
+                jukeboxNearby = true;
+            }
         }
     }
 

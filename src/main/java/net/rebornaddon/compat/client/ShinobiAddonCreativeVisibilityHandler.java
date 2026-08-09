@@ -43,7 +43,7 @@ public class ShinobiAddonCreativeVisibilityHandler {
         boolean removed = false;
 
         for (Iterator<ItemStack> iterator = items.iterator(); iterator.hasNext();) {
-            if (ShinobiAddonRestrictionHandler.shouldRestrict(iterator.next())) {
+            if (ShinobiAddonRestrictionHandler.shouldHide(iterator.next())) {
                 iterator.remove();
                 removed = true;
             }

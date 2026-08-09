@@ -1,6 +1,5 @@
 package net.rebornaddon;
 
-import net.minecraft.command.ICommand;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Loader;
 import net.minecraftforge.fml.common.Mod;
@@ -11,17 +10,21 @@ import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import net.rebornaddon.compat.FireDurationLimiter;
+import net.rebornaddon.compat.CreativeCooldownHandler;
+import net.rebornaddon.compat.FormAttributeCompatibilityHandler;
 import net.rebornaddon.compat.NarutoLearnerDropProtectionHandler;
 import net.rebornaddon.compat.NarutoPortalTileEntityPatch;
 import net.rebornaddon.compat.NarutoProgressionHandler;
-import net.rebornaddon.compat.ShinobiAddonPerformancePatch;
+import net.rebornaddon.compat.RedstoneProtectionHandler;
 import net.rebornaddon.compat.ShinobiAddonRestrictionHandler;
 import net.rebornaddon.compat.ShinobiStatRemovalHandler;
 import net.rebornaddon.compat.VariedCommoditiesRecipePatch;
 import net.rebornaddon.command.CreatorCreditsCommand;
 import net.rebornaddon.command.LuckPermsStatusCommand;
+import net.rebornaddon.command.RebornQuestsCommand;
 import net.rebornaddon.command.SubstitutionTestCommand;
 import net.rebornaddon.command.VillageAssignCommand;
+import net.rebornaddon.config.RebornAddonConfig;
 import net.rebornaddon.credits.CreatorCreditsHandler;
 import net.rebornaddon.proxy.CommonProxy;
 import net.rebornaddon.ranked.RankedSystem;
@@ -33,16 +36,20 @@ import net.rebornaddon.ranked.event.RankedEventHandler;
 import net.rebornaddon.ranked.match.MatchManager;
 import net.rebornaddon.ranked.network.RankedNetwork;
 import net.rebornaddon.ranked.queue.QueueManager;
+import net.rebornaddon.quest.CustomNpcQuestService;
 import net.rebornaddon.substitution.SubstitutionEntities;
 import net.rebornaddon.substitution.SubstitutionHandler;
 import net.rebornaddon.village.VillageSelectionHandler;
 import net.rebornaddon.village.network.RebornAddonNetwork;
+import net.rebornaddon.chakra.ChakraModeHandler;
+import net.rebornaddon.chakra.NarutoJutsuIntegration;
 
 import java.io.File;
 
 
 @Mod(modid = RebornAddonMod.MODID, name = RebornAddonMod.NAME, version = RebornAddonMod.VERSION,
-        dependencies = "after:narutomod;after:shinobiaddon;after:ftbquests;after:customnpcs", acceptableRemoteVersions = "*")
+        dependencies = "after:narutomod;after:shinobiaddon;after:ahznbcursemarkaddon;after:customnpcs",
+        acceptableRemoteVersions = "*")
 public class RebornAddonMod {
 
     public static final String MODID = "rebornaddon";
@@ -59,6 +66,7 @@ public class RebornAddonMod {
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
+        RebornAddonConfig.load(event.getSuggestedConfigurationFile());
         SubstitutionEntities.register();
         proxy.preInit();
         MinecraftForge.EVENT_BUS.register(VariedCommoditiesRecipePatch.INSTANCE);
@@ -70,24 +78,27 @@ public class RebornAddonMod {
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
         proxy.init();
+        NarutoJutsuIntegration.apply();
         MinecraftForge.EVENT_BUS.register(ShinobiAddonRestrictionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(ShinobiStatRemovalHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(NarutoLearnerDropProtectionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(NarutoProgressionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(FireDurationLimiter.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(CreativeCooldownHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(FormAttributeCompatibilityHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(RedstoneProtectionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(VillageSelectionHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(CreatorCreditsHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(SubstitutionHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(ChakraModeHandler.INSTANCE);
         registerClientVisibilityHandler(event);
         ShinobiAddonRestrictionHandler.applyVisibilityRules();
-        ShinobiAddonPerformancePatch.apply();
         NarutoProgressionHandler.apply();
     }
 
     @Mod.EventHandler
     public void postInit(FMLPostInitializationEvent event) {
         NarutoPortalTileEntityPatch.apply();
-        ShinobiAddonPerformancePatch.apply();
         NarutoProgressionHandler.apply();
         ShinobiAddonRestrictionHandler.applyVisibilityRules();
     }
@@ -95,7 +106,6 @@ public class RebornAddonMod {
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         NarutoPortalTileEntityPatch.apply();
-        ShinobiAddonPerformancePatch.apply();
         NarutoProgressionHandler.apply();
 
         File dataDir = new File(event.getServer().getDataDirectory(), "rebornaddon_ranked");
@@ -113,22 +123,13 @@ public class RebornAddonMod {
         event.registerServerCommand(new CreatorCreditsCommand());
         event.registerServerCommand(new SubstitutionTestCommand());
         event.registerServerCommand(new VillageAssignCommand());
-        registerCustomNpcQuestImportCommand(event);
+        if (Loader.isModLoaded("customnpcs")) {
+            event.registerServerCommand(new RebornQuestsCommand());
+            CustomNpcQuestService.refresh();
+        }
 
         rankedEventHandler = new RankedEventHandler();
         MinecraftForge.EVENT_BUS.register(rankedEventHandler);
-    }
-
-    private void registerCustomNpcQuestImportCommand(FMLServerStartingEvent event) {
-        if (!Loader.isModLoaded("ftbquests") || !Loader.isModLoaded("customnpcs")) {
-            return;
-        }
-
-        try {
-            Class<?> commandClass = Class.forName("net.rebornaddon.command.CustomNpcQuestImportCommand");
-            event.registerServerCommand((ICommand) commandClass.getConstructor().newInstance());
-        } catch (Exception ignored) {
-        }
     }
 
     private void registerClientVisibilityHandler(FMLInitializationEvent event) {
@@ -161,5 +162,6 @@ public class RebornAddonMod {
         RankedSystem.matchManager = null;
         RankedSystem.seasonManager = null;
         RankedSystem.partyManager = null;
+        CustomNpcQuestService.reset();
     }
 }

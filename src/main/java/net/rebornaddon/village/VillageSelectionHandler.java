@@ -80,6 +80,14 @@ public final class VillageSelectionHandler {
         rememberVillage(player, village);
     }
 
+    public Village getAssignedVillage(EntityPlayerMP player) {
+        if (player == null) {
+            return null;
+        }
+        Village persistedVillage = Village.byGroup(persisted(player).getString(VILLAGE_KEY));
+        return persistedVillage != null ? persistedVillage : LuckPermsBridge.INSTANCE.findKnownVillage(player);
+    }
+
     private static boolean hasSelectedVillage(EntityPlayer player) {
         return persisted(player).getBoolean(SELECTED_KEY);
     }

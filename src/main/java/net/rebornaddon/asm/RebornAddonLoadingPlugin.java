@@ -12,7 +12,11 @@ public class RebornAddonLoadingPlugin implements IFMLLoadingPlugin {
 
     @Override
     public String[] getASMTransformerClass() {
-        return new String[] {"net.rebornaddon.asm.JutsuCooldownGuardTransformer"};
+        return new String[] {
+                "net.rebornaddon.asm.JutsuCooldownGuardTransformer",
+                "net.rebornaddon.asm.DynamicDojutsuFeatureTransformer",
+                "net.rebornaddon.asm.NarutoModeCompatibilityTransformer"
+        };
     }
 
     @Override

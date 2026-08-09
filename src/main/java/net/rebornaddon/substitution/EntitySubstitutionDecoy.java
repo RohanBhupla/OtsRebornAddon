@@ -64,7 +64,8 @@ public class EntitySubstitutionDecoy extends Entity {
     @Override
     public boolean attackEntityFrom(DamageSource source, float amount) {
         if (!world.isRemote && !isDead) {
-            triggerHit();
+            SubstitutionHandler.INSTANCE.onDecoyHit(this, source == null ? null : source.getTrueSource());
+            setDead();
         }
         return true;
     }
