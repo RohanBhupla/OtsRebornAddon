@@ -27,6 +27,7 @@ public class QuestsTab implements HubTab {
     private static final int QUEST_PAGE_NEXT = 391;
     private static final int DETAIL_UP = 392;
     private static final int DETAIL_DOWN = 393;
+    private static final int CLAIM_REWARDS = 394;
     private static final int REFRESH = 399;
     private static final String[] RANKS = new String[]{"D", "C", "B", "A", "S"};
     private static final int QUESTS_PER_PAGE = 7;
@@ -41,6 +42,7 @@ public class QuestsTab implements HubTab {
     private int builtRevision = -1;
     private int customTabsPerPage = 1;
     private boolean requestSent;
+    private boolean claimPending;
     private List<ClientQuestData.Tab> visibleCustomTabs = Collections.emptyList();
     private List<ClientQuestData.Quest> filteredQuests = Collections.emptyList();
 
@@ -63,7 +65,11 @@ public class QuestsTab implements HubTab {
     public void buildButtons(List<GuiButton> buttons, int left, int top, int width, int height) {
         requestIfNeeded();
         ClientQuestData.Snapshot data = ClientQuestData.get();
-        builtRevision = ClientQuestData.getRevision();
+        int revision = ClientQuestData.getRevision();
+        if (builtRevision != revision) {
+            claimPending = false;
+        }
+        builtRevision = revision;
         if (mode == 2 && selectedTab(data) == null) {
             mode = 0;
             selectedCustomTab = "";
@@ -137,6 +143,14 @@ public class QuestsTab implements HubTab {
                 Theme.PURPLE_DARK, Theme.PURPLE_MID, Theme.BUTTON_TEXT));
         buttons.add(new ThemedButton(DETAIL_DOWN, left + width - 18, listTop, 18, 18, "v",
                 Theme.PURPLE_DARK, Theme.PURPLE_MID, Theme.BUTTON_TEXT));
+
+        ClientQuestData.Quest selected = selectedQuest();
+        if (selected != null && selected.claimable) {
+            ThemedButton claim = new ThemedButton(CLAIM_REWARDS, left + listWidth + 10, pagerY,
+                    112, 18, "Claim Rewards", Theme.SUCCESS, 0xFF5B925E, Theme.BUTTON_TEXT);
+            claim.enabled = !claimPending;
+            buttons.add(claim);
+        }
     }
 
     private ThemedButton modeButton(int id, int x, int y, int width, String label, boolean active) {
@@ -185,7 +199,7 @@ public class QuestsTab implements HubTab {
 
         int detailWidth = width - (detailLeft - left) - 4;
         List<DetailLine> lines = detailLines(font, selected, detailWidth - 8);
-        int visibleLines = Math.max(1, (height - 74) / 10);
+        int visibleLines = Math.max(1, (height - 94) / 10);
         int maxOffset = Math.max(0, lines.size() - visibleLines);
         detailOffset = Math.min(detailOffset, maxOffset);
         int y = listTop + 23;
@@ -206,16 +220,40 @@ public class QuestsTab implements HubTab {
         if (!quest.completer.isEmpty()) {
             wrap(lines, font, "Turn in to: " + quest.completer, width, Theme.TEXT_MUTED);
         }
+        if (!quest.repeat.isEmpty()) {
+            wrap(lines, font, quest.repeat, width, Theme.TEXT_MUTED);
+        }
         lines.add(new DetailLine("", Theme.TEXT_MUTED));
         wrap(lines, font, quest.description, width, Theme.TEXT_LIGHT);
+
+        if (quest.status >= 3 && !quest.completionText.isEmpty()) {
+            lines.add(new DetailLine("", Theme.TEXT_MUTED));
+            lines.add(new DetailLine("Completion", Theme.GOLD));
+            wrap(lines, font, quest.completionText, width, Theme.TEXT_LIGHT);
+        }
+
+        if (quest.status == 3 && !quest.instantCompletion) {
+            lines.add(new DetailLine("", Theme.TEXT_MUTED));
+            wrap(lines, font, "Return to " + (quest.completer.isEmpty() ? "the assigned NPC" : quest.completer)
+                    + " to claim these rewards.", width, Theme.NEUTRAL);
+        }
 
         if (!quest.objectives.isEmpty()) {
             lines.add(new DetailLine("", Theme.TEXT_MUTED));
             lines.add(new DetailLine("Objectives", Theme.GOLD));
             for (ClientQuestData.Objective objective : quest.objectives) {
-                String progress = objective.maximum > 0 ? " (" + objective.progress + "/" + objective.maximum + ")" : "";
+                String count = objective.progress + "/" + objective.maximum;
+                String progress = objective.maximum > 0 && !objective.text.contains(count) ? " (" + count + ")" : "";
                 wrap(lines, font, (objective.complete ? "[x] " : "[ ] ") + objective.text + progress,
                         width, objective.complete ? Theme.SUCCESS : Theme.TEXT_LIGHT);
+            }
+        }
+
+        if (!quest.rules.isEmpty()) {
+            lines.add(new DetailLine("", Theme.TEXT_MUTED));
+            lines.add(new DetailLine("Requirements", Theme.GOLD));
+            for (String rule : quest.rules) {
+                wrap(lines, font, rule, width, Theme.TEXT_MUTED);
             }
         }
 
@@ -263,7 +301,7 @@ public class QuestsTab implements HubTab {
             } else if (mode == 1 && !data.village.isEmpty() && data.village.equals(quest.village)) {
                 result.add(quest);
             } else if (mode == 2 && tab != null
-                    && quest.category.toLowerCase(Locale.ROOT).contains(tabFilter)
+                    && quest.category.toLowerCase(Locale.ROOT).equals(tabFilter)
                     && (tab.village.isEmpty() || tab.village.equals(quest.village))) {
                 result.add(quest);
             }
@@ -338,6 +376,14 @@ public class QuestsTab implements HubTab {
         }
         if (buttonId == DETAIL_UP || buttonId == DETAIL_DOWN) {
             detailOffset = Math.max(0, detailOffset + (buttonId == DETAIL_UP ? -4 : 4));
+            return false;
+        }
+        if (buttonId == CLAIM_REWARDS) {
+            ClientQuestData.Quest selected = selectedQuest();
+            if (selected != null && selected.claimable && !claimPending) {
+                claimPending = true;
+                RebornAddonNetwork.claimQuest(selected.id);
+            }
             return false;
         }
         if (buttonId == REFRESH) {

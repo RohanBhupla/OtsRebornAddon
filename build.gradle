@@ -55,7 +55,8 @@ def otsModsDir = file(System.getenv('OTS_MODS_DIR') ?: 'D:/Mods/Curseforge/minec
 
 dependencies {
     minecraft 'net.minecraftforge:forge:1.12.2-14.23.5.2855'
-    compileOnly fileTree(dir: otsModsDir, include: ['*.jar'], exclude: ['RebornAddon-*.jar'])
+    compileOnly fileTree(dir: otsModsDir, include: ['*.jar'],
+            exclude: ['RebornAddon-*.jar', '00-RebornAddon-*.jar'])
 }
 
 jar {
@@ -80,3 +81,43 @@ processResources {
         exclude 'mcmod.info'
     }
 }
+
+task verifyRebornLocalization {
+    inputs.files fileTree('src/main/java') { include '**/*.java' }
+    inputs.file file('src/main/resources/assets/rebornaddon/lang/en_us.lang')
+
+    doLast {
+        def languageFile = file('src/main/resources/assets/rebornaddon/lang/en_us.lang')
+        def keys = [] as Set
+        def duplicates = [] as Set
+        languageFile.eachLine('UTF-8') { line ->
+            if (!line || line.startsWith('#') || !line.contains('=')) {
+                return
+            }
+            def key = line.substring(0, line.indexOf('=')).trim()
+            if (!keys.add(key)) {
+                duplicates.add(key)
+            }
+        }
+
+        def missing = [] as Set
+        def pattern = ~/(?:ClientLocalization|I18n)\.format\(\s*"((?:gui|message|key|item)\.rebornaddon\.[^"]+)"/
+        fileTree('src/main/java').matching { include '**/*.java' }.each { source ->
+            def matcher = source.getText('UTF-8') =~ pattern
+            matcher.each { match ->
+                if (!keys.contains(match[1])) {
+                    missing.add(match[1])
+                }
+            }
+        }
+
+        if (!duplicates.isEmpty()) {
+            throw new GradleException("Duplicate RebornAddon localization keys: ${duplicates.sort().join(', ')}")
+        }
+        if (!missing.isEmpty()) {
+            throw new GradleException("Missing RebornAddon localization keys: ${missing.sort().join(', ')}")
+        }
+    }
+}
+
+check.dependsOn verifyRebornLocalization

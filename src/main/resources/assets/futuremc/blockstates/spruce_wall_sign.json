@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "futuremc:spruce_sign" },
+    "facing=south": { "model": "futuremc:spruce_sign" },
+    "facing=west": { "model": "futuremc:spruce_sign" },
+    "facing=east": { "model": "futuremc:spruce_sign" }
+  }
+}

@@ -4,9 +4,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraftforge.common.MinecraftForge;
 import net.rebornaddon.data.RankedClientData;
 import net.rebornaddon.keybind.KeyBindings;
-import net.rebornaddon.keybind.ClientKeyLocalization;
+import net.rebornaddon.client.ClientLocalization;
 import net.rebornaddon.keybind.BlockedKeyBindingHandler;
 import net.rebornaddon.music.client.RebornMusicController;
+import net.rebornaddon.music.client.RebornMusicPauseMenu;
 import net.rebornaddon.music.client.AkatsukiBellLimiter;
 import net.rebornaddon.quest.client.ClientQuestData;
 import net.rebornaddon.quest.network.QuestSyncMessage;
@@ -42,10 +43,11 @@ public class ClientProxy extends CommonProxy {
     public void init() {
         MinecraftForge.EVENT_BUS.register(new KeyBindings());
         MinecraftForge.EVENT_BUS.register(RebornMusicController.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(RebornMusicPauseMenu.INSTANCE);
         MinecraftForge.EVENT_BUS.register(AkatsukiBellLimiter.INSTANCE);
         MinecraftForge.EVENT_BUS.register(BlockedKeyBindingHandler.INSTANCE);
         BlockedKeyBindingHandler.INSTANCE.suppress();
-        ClientKeyLocalization.install();
+        ClientLocalization.install();
     }
 
     @Override

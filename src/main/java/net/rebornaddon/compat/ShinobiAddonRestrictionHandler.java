@@ -157,8 +157,13 @@ public class ShinobiAddonRestrictionHandler {
             "kabutoaddon:sumirehime",
             "kabutoaddon:rinne_sharingan_helmet",
             "narutomodaddon:item_chakra_charge",
+            "narutomodaddon:chakra_charge",
             "betterquesting:extra_life",
             "betterquesting:guide",
+            "betterquesting:guide_book",
+            "betterquesting:heart_full",
+            "betterquesting:heart_half",
+            "betterquesting:heart_quarter",
             "betterquesting:placeholder",
             "ftbquests:custom_icon",
             "customnpcs:npcborder"

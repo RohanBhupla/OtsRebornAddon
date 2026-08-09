@@ -10,6 +10,10 @@ import java.util.Map;
 @IFMLLoadingPlugin.TransformerExclusions({"net.rebornaddon.asm"})
 public class RebornAddonLoadingPlugin implements IFMLLoadingPlugin {
 
+    public RebornAddonLoadingPlugin() {
+        KnownRecipeErrorFilter.install();
+    }
+
     @Override
     public String[] getASMTransformerClass() {
         return new String[] {

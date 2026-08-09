@@ -6,6 +6,7 @@ import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraft.nbt.NBTTagCompound;
 import net.rebornaddon.quest.network.QuestRequestMessage;
+import net.rebornaddon.quest.network.QuestClaimMessage;
 import net.rebornaddon.quest.network.QuestSyncMessage;
 import net.rebornaddon.substitution.SubstitutionUseMessage;
 import net.rebornaddon.substitution.SubstitutionEffectMessage;
@@ -30,6 +31,7 @@ public final class RebornAddonNetwork {
         CHANNEL.registerMessage(QuestSyncMessage.Handler.class, QuestSyncMessage.class, 6, Side.CLIENT);
         CHANNEL.registerMessage(ChakraLearnMessage.Handler.class, ChakraLearnMessage.class, 7, Side.SERVER);
         CHANNEL.registerMessage(ChakraModeEffectMessage.Handler.class, ChakraModeEffectMessage.class, 8, Side.CLIENT);
+        CHANNEL.registerMessage(QuestClaimMessage.Handler.class, QuestClaimMessage.class, 9, Side.SERVER);
     }
 
     public static void openVillageGui(EntityPlayerMP player) {
@@ -66,6 +68,10 @@ public final class RebornAddonNetwork {
 
     public static void requestQuestSync() {
         CHANNEL.sendToServer(new QuestRequestMessage());
+    }
+
+    public static void claimQuest(int questId) {
+        CHANNEL.sendToServer(new QuestClaimMessage(questId));
     }
 
     public static void sendQuestSnapshot(EntityPlayerMP player, NBTTagCompound data) {

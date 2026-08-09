@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "rotation=0": { "model": "futuremc:jungle_sign" },
+    "rotation=1": { "model": "futuremc:jungle_sign" },
+    "rotation=2": { "model": "futuremc:jungle_sign" },
+    "rotation=3": { "model": "futuremc:jungle_sign" },
+    "rotation=4": { "model": "futuremc:jungle_sign" },
+    "rotation=5": { "model": "futuremc:jungle_sign" },
+    "rotation=6": { "model": "futuremc:jungle_sign" },
+    "rotation=7": { "model": "futuremc:jungle_sign" },
+    "rotation=8": { "model": "futuremc:jungle_sign" },
+    "rotation=9": { "model": "futuremc:jungle_sign" },
+    "rotation=10": { "model": "futuremc:jungle_sign" },
+    "rotation=11": { "model": "futuremc:jungle_sign" },
+    "rotation=12": { "model": "futuremc:jungle_sign" },
+    "rotation=13": { "model": "futuremc:jungle_sign" },
+    "rotation=14": { "model": "futuremc:jungle_sign" },
+    "rotation=15": { "model": "futuremc:jungle_sign" }
+  }
+}

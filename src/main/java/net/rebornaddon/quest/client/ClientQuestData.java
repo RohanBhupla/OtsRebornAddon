@@ -63,9 +63,17 @@ public final class ClientQuestData {
             rewards.add(rewardTags.getCompoundTagAt(i).getString("Text"));
         }
 
+        List<String> rules = new ArrayList<String>();
+        NBTTagList ruleTags = tag.getTagList("Rules", 10);
+        for (int i = 0; i < ruleTags.tagCount(); i++) {
+            rules.add(ruleTags.getCompoundTagAt(i).getString("Text"));
+        }
+
         return new Quest(tag.getInteger("Id"), tag.getString("Title"), tag.getString("Category"),
                 tag.getString("Rank"), tag.getString("Village"), tag.getString("Description"),
-                tag.getString("Completer"), tag.getByte("Status"), objectives, rewards);
+                tag.getString("CompletionText"), tag.getString("Completer"), tag.getString("Repeat"),
+                tag.getByte("Status"), tag.getBoolean("InstantCompletion"), tag.getBoolean("Claimable"),
+                objectives, rules, rewards);
     }
 
     public static final class Snapshot {
@@ -109,28 +117,40 @@ public final class ClientQuestData {
         public final String rank;
         public final String village;
         public final String description;
+        public final String completionText;
         public final String completer;
+        public final String repeat;
         public final int status;
+        public final boolean instantCompletion;
+        public final boolean claimable;
         public final List<Objective> objectives;
+        public final List<String> rules;
         public final List<String> rewards;
 
         private Quest(int id, String title, String category, String rank, String village, String description,
-                      String completer, int status, List<Objective> objectives, List<String> rewards) {
+                      String completionText, String completer, String repeat, int status,
+                      boolean instantCompletion, boolean claimable,
+                      List<Objective> objectives, List<String> rules, List<String> rewards) {
             this.id = id;
             this.title = title;
             this.category = category;
             this.rank = rank;
             this.village = village;
             this.description = description;
+            this.completionText = completionText;
             this.completer = completer;
+            this.repeat = repeat;
             this.status = status;
+            this.instantCompletion = instantCompletion;
+            this.claimable = claimable;
             this.objectives = Collections.unmodifiableList(new ArrayList<Objective>(objectives));
+            this.rules = Collections.unmodifiableList(new ArrayList<String>(rules));
             this.rewards = Collections.unmodifiableList(new ArrayList<String>(rewards));
         }
 
         public String statusLabel() {
             switch (status) {
-                case 1: return "Available";
+                case 1: return "Not started";
                 case 2: return "Active";
                 case 3: return "Ready to turn in";
                 case 4: return "Completed";

@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "rotation=0": { "model": "futuremc:spruce_sign" },
+    "rotation=1": { "model": "futuremc:spruce_sign" },
+    "rotation=2": { "model": "futuremc:spruce_sign" },
+    "rotation=3": { "model": "futuremc:spruce_sign" },
+    "rotation=4": { "model": "futuremc:spruce_sign" },
+    "rotation=5": { "model": "futuremc:spruce_sign" },
+    "rotation=6": { "model": "futuremc:spruce_sign" },
+    "rotation=7": { "model": "futuremc:spruce_sign" },
+    "rotation=8": { "model": "futuremc:spruce_sign" },
+    "rotation=9": { "model": "futuremc:spruce_sign" },
+    "rotation=10": { "model": "futuremc:spruce_sign" },
+    "rotation=11": { "model": "futuremc:spruce_sign" },
+    "rotation=12": { "model": "futuremc:spruce_sign" },
+    "rotation=13": { "model": "futuremc:spruce_sign" },
+    "rotation=14": { "model": "futuremc:spruce_sign" },
+    "rotation=15": { "model": "futuremc:spruce_sign" }
+  }
+}

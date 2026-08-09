@@ -18,6 +18,7 @@ import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LineNumberNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.TypeInsnNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
 import java.util.Arrays;
@@ -88,6 +89,12 @@ public final class DynamicDojutsuFeatureTransformer implements IClassTransformer
         boolean dedicatedServer = isDedicatedServer();
 
         for (MethodNode method : classNode.methods) {
+            if (isServerStartingMethod(className, method)) {
+                keepDojutsuCommands(method);
+                changed = true;
+                continue;
+            }
+
             if (dedicatedServer
                     && PACKET_HANDLER.equals(className)
                     && "register".equals(method.name)
@@ -114,6 +121,36 @@ public final class DynamicDojutsuFeatureTransformer implements IClassTransformer
         }
 
         return changed;
+    }
+
+    private boolean isServerStartingMethod(String className, MethodNode method) {
+        return "com.leolifeless.shinobiaddon.ShinobiAddon".equals(className)
+                && "serverStarting".equals(method.name)
+                && "(Lnet/minecraftforge/fml/common/event/FMLServerStartingEvent;)V".equals(method.desc);
+    }
+
+    private void keepDojutsuCommands(MethodNode method) {
+        clear(method);
+        addCommandRegistration(method.instructions,
+                "com/leolifeless/shinobiaddon/command/DojutsuCommand");
+        addCommandRegistration(method.instructions,
+                "com/leolifeless/shinobiaddon/command/DojutsuOwnerCommand");
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxStack = 3;
+    }
+
+    private void addCommandRegistration(InsnList instructions, String commandClass) {
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new TypeInsnNode(Opcodes.NEW, commandClass));
+        instructions.add(new InsnNode(Opcodes.DUP));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESPECIAL, commandClass, "<init>", "()V", false));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKEVIRTUAL,
+                "net/minecraftforge/fml/common/event/FMLServerStartingEvent",
+                "registerServerCommand",
+                "(Lnet/minecraft/command/ICommand;)V",
+                false));
     }
 
     private boolean isDedicatedServer() {
@@ -242,8 +279,7 @@ public final class DynamicDojutsuFeatureTransformer implements IClassTransformer
         }
 
         return "init".equals(method.name)
-                || "postInit".equals(method.name)
-                || "serverStarting".equals(method.name);
+                || "postInit".equals(method.name);
     }
 
     private boolean isNetworkHandler(String className, MethodNode method) {

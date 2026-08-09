@@ -36,8 +36,7 @@ public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
             }
 
             for (ItemStack stack : ShinobiAddonRestrictionHandler.visibilityStacksFor(item)) {
-                ingredientBlacklist.addIngredientToBlacklist(stack);
-                itemBlacklist.addItemToBlacklist(stack);
+                hide(ingredientBlacklist, itemBlacklist, stack);
             }
         }
     }
@@ -59,6 +58,18 @@ public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
 
         if (!restricted.isEmpty()) {
             ingredientRegistry.removeIngredientsAtRuntime(ItemStack.class, restricted);
+        }
+    }
+
+    private static void hide(IIngredientBlacklist ingredientBlacklist, IItemBlacklist itemBlacklist,
+            ItemStack stack) {
+        if (stack == null || stack.isEmpty()) {
+            return;
+        }
+        try {
+            ingredientBlacklist.addIngredientToBlacklist(stack);
+            itemBlacklist.addItemToBlacklist(stack);
+        } catch (RuntimeException ignored) {
         }
     }
 }

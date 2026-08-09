@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "futuremc:dark_oak_sign" },
+    "facing=south": { "model": "futuremc:dark_oak_sign" },
+    "facing=west": { "model": "futuremc:dark_oak_sign" },
+    "facing=east": { "model": "futuremc:dark_oak_sign" }
+  }
+}
