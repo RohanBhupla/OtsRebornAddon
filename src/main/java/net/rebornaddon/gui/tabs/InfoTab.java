@@ -25,19 +25,9 @@ public class InfoTab implements HubTab {
     public static InfoTab main() {
         return new InfoTab("Main", "Otutsuki Reborn", Theme.GOLD, new String[][]{
                 {"Profile", "Ninja data", "Village status", "Rank and standing"},
-                {"Progress", "FTB quest tracking", "CustomNPC objectives", "Reward claims"},
+                {"Progress", "CustomNPC missions", "Live objectives", "NPC rewards"},
                 {"Combat", "Ranked queue", "Match record", "Season placement"},
                 {"Server", "Dedicated play", "Mohist 1.12.2", "Client-safe screens"}
-        });
-    }
-
-    public static InfoTab quests() {
-        return new InfoTab("Quests", "Mission Board", Theme.SUCCESS, new String[][]{
-                {"D-Rank", "Local tasks", "Training missions", "Early rewards"},
-                {"C-Rank", "Field work", "Squad requests", "Village errands"},
-                {"B-Rank", "Threat response", "Combat assignments", "Rare payouts"},
-                {"A-Rank", "Elite contracts", "Story branches", "High rewards"},
-                {"S-Rank", "Critical missions", "Major arcs", "Top rewards"}
         });
     }
 

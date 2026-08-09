@@ -21,6 +21,10 @@ public interface HubTab {
 
     default void onTick() {}
 
+    default boolean consumeButtonRefresh() {
+        return false;
+    }
+
     /** Only tabs that actually use a text field need to override these - GuiHub
      *  forwards raw keyboard/mouse events here in addition to its normal button
      *  handling, since GuiTextField isn't part of the buttonList mechanism. */

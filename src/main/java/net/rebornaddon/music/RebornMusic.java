@@ -51,7 +51,7 @@ public final class RebornMusic {
     private static Track track(String id, String title) {
         ResourceLocation soundName = new ResourceLocation(RebornAddonMod.MODID, "music." + id);
         SoundEvent sound = new SoundEvent(soundName).setRegistryName(soundName);
-        return new Track(id, title, sound, new RebornMusicRecord(id, sound));
+        return new Track(id, title, sound, new RebornMusicRecord(id, title, sound));
     }
 
     public static final class Track {

@@ -31,7 +31,7 @@ public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
 
         for (Item item : ForgeRegistries.ITEMS.getValuesCollection()) {
             ResourceLocation name = item.getRegistryName();
-            if (!ShinobiAddonRestrictionHandler.shouldRestrictName(name)) {
+            if (!ShinobiAddonRestrictionHandler.shouldHideItem(item)) {
                 continue;
             }
 
@@ -52,7 +52,7 @@ public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
 
         List<ItemStack> restricted = new ArrayList<ItemStack>();
         for (ItemStack stack : ingredientRegistry.getIngredients(ItemStack.class)) {
-            if (ShinobiAddonRestrictionHandler.shouldRestrict(stack)) {
+            if (ShinobiAddonRestrictionHandler.shouldHide(stack)) {
                 restricted.add(stack);
             }
         }

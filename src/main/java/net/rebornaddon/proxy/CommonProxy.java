@@ -2,6 +2,10 @@ package net.rebornaddon.proxy;
 
 import net.rebornaddon.ranked.network.RankedSyncMessage;
 import net.rebornaddon.substitution.SubstitutionEffectMessage;
+import net.rebornaddon.quest.network.QuestSyncMessage;
+import net.rebornaddon.chakra.ChakraMode;
+import net.rebornaddon.chakra.network.ChakraModeEffectMessage;
+import net.narutomod.item.ItemNinjaArmor;
 
 /**
  * Server-safe base. This is what actually gets loaded on a dedicated server (or the
@@ -30,5 +34,26 @@ public class CommonProxy {
     }
 
     public void handleSubstitutionEffect(SubstitutionEffectMessage message) {
+    }
+
+    public void handleQuestSync(QuestSyncMessage message) {
+    }
+
+    public void openChakraLearnGui(ChakraMode mode) {
+    }
+
+    public void handleChakraModeEffect(ChakraModeEffectMessage message) {
+    }
+
+    public ItemNinjaArmor.ArmorData createRogueArmorData(ItemNinjaArmor.Type type,
+                                                          String texture,
+                                                          boolean hideHeadwear) {
+        return new ServerRogueArmorData(texture);
+    }
+
+    private static final class ServerRogueArmorData extends ItemNinjaArmor.ArmorData {
+        private ServerRogueArmorData(String texture) {
+            this.texture = texture;
+        }
     }
 }

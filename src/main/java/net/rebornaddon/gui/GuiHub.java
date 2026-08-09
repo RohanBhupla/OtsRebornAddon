@@ -6,6 +6,7 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.rebornaddon.gui.tabs.HubTab;
 import net.rebornaddon.gui.tabs.InfoTab;
+import net.rebornaddon.gui.tabs.QuestsTab;
 import net.rebornaddon.gui.tabs.RankedTab;
 import net.rebornaddon.gui.theme.Theme;
 import net.rebornaddon.gui.widgets.ThemedButton;
@@ -32,7 +33,7 @@ public class GuiHub extends GuiScreen {
         tabs = new ArrayList<HubTab>();
         activeTabIndex = 0;
         tabs.add(InfoTab.main());
-        tabs.add(InfoTab.quests());
+        tabs.add(new QuestsTab());
         tabs.add(InfoTab.shop());
         tabs.add(InfoTab.village());
         tabs.add(new RankedTab());
@@ -101,6 +102,9 @@ public class GuiHub extends GuiScreen {
     public void updateScreen() {
         super.updateScreen();
         getActiveTab().onTick();
+        if (getActiveTab().consumeButtonRefresh()) {
+            rebuildButtons();
+        }
     }
 
     @Override

@@ -12,6 +12,7 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.rebornaddon.substitution.EntitySubstitutionDecoy;
 import net.rebornaddon.village.Village;
+import net.rebornaddon.client.render.SolidColorTexture;
 
 import java.util.UUID;
 
@@ -52,6 +53,7 @@ public class RenderSubstitutionDecoy extends Render<EntitySubstitutionDecoy> {
         float verticalScale = verticalScale(village, age, maxAge);
         float yOffset = verticalOffset(village, age, maxAge);
 
+        long textureBinding = SolidColorTexture.NO_BINDING;
         GlStateManager.pushMatrix();
         try {
             GlStateManager.translate((float) x, (float) y + yOffset, (float) z);
@@ -70,7 +72,7 @@ public class RenderSubstitutionDecoy extends Render<EntitySubstitutionDecoy> {
             bindTexture(skinFor(owner));
             renderModel(model, entity, age, 1.0F, 1.0F, 1.0F, style.skinAlpha * opacity);
 
-            GlStateManager.disableTexture2D();
+            textureBinding = SolidColorTexture.bind();
             renderModel(model, entity, age, style.red, style.green, style.blue,
                     style.materialAlpha * opacity);
 
@@ -83,13 +85,13 @@ public class RenderSubstitutionDecoy extends Render<EntitySubstitutionDecoy> {
             renderModel(shell, entity, age, style.shellRed, style.shellGreen, style.shellBlue,
                     style.shellAlpha * opacity * pulse);
         } finally {
-            GlStateManager.enableTexture2D();
             GlStateManager.depthMask(true);
             GlStateManager.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA,
                     GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
             GlStateManager.disableBlend();
             GlStateManager.disableRescaleNormal();
             GlStateManager.color(1.0F, 1.0F, 1.0F, 1.0F);
+            SolidColorTexture.restore(textureBinding);
             GlStateManager.popMatrix();
         }
     }
