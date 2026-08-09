@@ -85,7 +85,7 @@ public class RebornQuestsCommand extends CommandBase {
                 for (QuestTabDefinition tab : store.all()) {
                     String scope = tab.getVillage().isEmpty() ? "all villages" : tab.getVillage();
                     sender.sendMessage(new TextComponentString(tab.getId() + ": " + tab.getTitle()
-                            + " | category contains '" + tab.getCategoryFilter() + "' | " + scope));
+                            + " | category '" + tab.getCategoryFilter() + "' | " + scope));
                 }
             }
             return;

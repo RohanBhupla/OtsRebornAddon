@@ -19,6 +19,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 public final class NarutoModeCompatibilityTransformer implements IClassTransformer {
+    private static final String ADDON_OPTIONS_LOGIN =
+            "narutomodaddon.procedure.ProcedureShowOptionsWhenPlayerJoins";
+    private static final String PLAYER_LOGIN_DESC =
+            "(Lnet/minecraftforge/fml/common/gameevent/PlayerEvent$PlayerLoggedInEvent;)V";
     private static final String ARMOR_TEXTURE_DESC =
             "(Lnet/minecraft/item/ItemStack;Lnet/minecraft/entity/Entity;"
                     + "Lnet/minecraft/inventory/EntityEquipmentSlot;Ljava/lang/String;)Ljava/lang/String;";
@@ -82,6 +86,7 @@ public final class NarutoModeCompatibilityTransformer implements IClassTransform
         String[] formUuids = formUuids(className);
         if (!PROGRESSION_CLOAKS.contains(className)
                 && !NORMAL_CLOAKS.contains(className)
+                && !ADDON_OPTIONS_LOGIN.equals(className)
                 && formUuids == null) {
             return basicClass;
         }
@@ -92,6 +97,14 @@ public final class NarutoModeCompatibilityTransformer implements IClassTransform
             boolean changed = false;
 
             for (MethodNode method : classNode.methods) {
+                if (ADDON_OPTIONS_LOGIN.equals(className)
+                        && "onPlayerLoggedIn".equals(method.name)
+                        && PLAYER_LOGIN_DESC.equals(method.desc)) {
+                    replaceWithReturn(method);
+                    changed = true;
+                    continue;
+                }
+
                 if ((PROGRESSION_CLOAKS.contains(className) || NORMAL_CLOAKS.contains(className))
                         && "getArmorTexture".equals(method.name)
                         && ARMOR_TEXTURE_DESC.equals(method.desc)) {
@@ -136,6 +149,13 @@ public final class NarutoModeCompatibilityTransformer implements IClassTransform
                 false));
         method.instructions.add(new InsnNode(Opcodes.ARETURN));
         method.maxStack = 1;
+        method.maxLocals = argumentSlots(method);
+    }
+
+    private void replaceWithReturn(MethodNode method) {
+        clear(method);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxStack = 0;
         method.maxLocals = argumentSlots(method);
     }
 

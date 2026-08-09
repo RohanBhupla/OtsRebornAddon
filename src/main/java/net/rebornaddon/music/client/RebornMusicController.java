@@ -13,6 +13,7 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.rebornaddon.music.RebornMusic;
 import net.rebornaddon.config.RebornAddonConfig;
+import net.rebornaddon.client.ClientLocalization;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ public final class RebornMusicController {
     private int trackTicks;
     private int jukeboxCheckTicks;
     private boolean jukeboxNearby;
+    private boolean paused;
     private final List<ISound> activeRecords = new ArrayList<ISound>();
 
     private RebornMusicController() {
@@ -52,6 +54,13 @@ public final class RebornMusicController {
         }
 
         SoundHandler sounds = minecraft.getSoundHandler();
+        if (paused) {
+            if (currentTrack != null) {
+                MusicChannelControl.keepAlive(sounds, currentTrack);
+                MusicChannelControl.pause(sounds, currentTrack);
+            }
+            return;
+        }
         if (currentTrack == null) {
             playNext(sounds);
             return;
@@ -71,6 +80,61 @@ public final class RebornMusicController {
             activeRecords.add(sound);
             jukeboxNearby = true;
         }
+    }
+
+    public void togglePaused() {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        SoundHandler sounds = minecraft.getSoundHandler();
+        paused = !paused;
+
+        if (paused) {
+            if (currentTrack != null && !MusicChannelControl.pause(sounds, currentTrack)) {
+                stopCurrent(sounds);
+            }
+            showStatus(minecraft, ClientLocalization.format(
+                    "message.rebornaddon.music_paused", "Music paused"));
+            return;
+        }
+
+        if (currentTrack != null && !MusicChannelControl.resume(sounds, currentTrack)) {
+            stopCurrent(sounds);
+        }
+        if (currentTrack == null && canPlay(minecraft)) {
+            if (trackIndex >= 0) {
+                playCurrent(sounds);
+            } else {
+                playNext(sounds);
+            }
+        }
+        showStatus(minecraft, ClientLocalization.format(
+                "message.rebornaddon.music_resumed", "Music resumed"));
+    }
+
+    public void skipTrack() {
+        Minecraft minecraft = Minecraft.getMinecraft();
+        stopCurrent(minecraft.getSoundHandler());
+        if (RebornMusic.TRACKS.length == 0) {
+            return;
+        }
+        trackIndex = (trackIndex + 1) % RebornMusic.TRACKS.length;
+        if (!paused && canPlay(minecraft)) {
+            playCurrent(minecraft.getSoundHandler());
+        }
+        showStatus(minecraft, ClientLocalization.format(
+                "message.rebornaddon.music_track", "Now playing: %s",
+                RebornMusic.TRACKS[trackIndex].title));
+    }
+
+    public boolean isPaused() {
+        return paused;
+    }
+
+    public String getCurrentTrackTitle() {
+        if (RebornMusic.TRACKS.length == 0) {
+            return null;
+        }
+        int selectedTrack = trackIndex < 0 ? 0 : trackIndex;
+        return RebornMusic.TRACKS[selectedTrack].title;
     }
 
     private void updateJukeboxState(Minecraft minecraft) {
@@ -107,6 +171,13 @@ public final class RebornMusicController {
             return;
         }
         trackIndex = (trackIndex + 1) % RebornMusic.TRACKS.length;
+        playCurrent(sounds);
+    }
+
+    private void playCurrent(SoundHandler sounds) {
+        if (trackIndex < 0 || trackIndex >= RebornMusic.TRACKS.length) {
+            return;
+        }
         currentTrack = PositionedSoundRecord.getMusicRecord(RebornMusic.TRACKS[trackIndex].sound);
         trackTicks = 0;
         sounds.playSound(currentTrack);
@@ -117,6 +188,18 @@ public final class RebornMusicController {
             sounds.stopSound(currentTrack);
             currentTrack = null;
             trackTicks = 0;
+        }
+    }
+
+    private boolean canPlay(Minecraft minecraft) {
+        return minecraft.gameSettings.getSoundLevel(SoundCategory.MASTER) > 0.0F
+                && minecraft.gameSettings.getSoundLevel(SoundCategory.MUSIC) > 0.0F
+                && !jukeboxNearby;
+    }
+
+    private void showStatus(Minecraft minecraft, String message) {
+        if (minecraft.ingameGUI != null && minecraft.world != null) {
+            minecraft.ingameGUI.setOverlayMessage(message, false);
         }
     }
 

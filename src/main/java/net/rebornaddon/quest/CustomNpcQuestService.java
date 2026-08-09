@@ -5,19 +5,25 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.util.text.TextComponentString;
 import net.minecraftforge.fml.common.Loader;
 import net.rebornaddon.village.Village;
 import net.rebornaddon.village.VillageSelectionHandler;
 import net.rebornaddon.village.network.RebornAddonNetwork;
+import noppes.npcs.NoppesUtilPlayer;
 import noppes.npcs.api.handler.data.IQuestObjective;
 import noppes.npcs.api.wrapper.PlayerWrapper;
 import noppes.npcs.controllers.QuestController;
+import noppes.npcs.controllers.FactionController;
 import noppes.npcs.controllers.data.PlayerData;
 import noppes.npcs.controllers.data.PlayerQuestData;
 import noppes.npcs.controllers.data.Quest;
 import noppes.npcs.controllers.data.QuestData;
 import noppes.npcs.controllers.DialogController;
 import noppes.npcs.controllers.data.Dialog;
+import noppes.npcs.controllers.data.Faction;
+import noppes.npcs.constants.EnumQuestCompletion;
+import noppes.npcs.constants.EnumQuestRepeat;
 import noppes.npcs.quests.QuestDialog;
 import noppes.npcs.quests.QuestItem;
 import noppes.npcs.quests.QuestKill;
@@ -29,9 +35,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -40,11 +49,11 @@ public final class CustomNpcQuestService {
             rankPattern("D"), rankPattern("C"), rankPattern("B"), rankPattern("A"), rankPattern("S")
     };
     private static final String[] RANKS = new String[]{"D", "C", "B", "A", "S"};
-    private static final int MAX_QUESTS = 1500;
-    private static final int MAX_OBJECTIVES = 24;
+    private static final int MAX_OBJECTIVES = 128;
     private static final long REQUEST_DELAY_MILLIS = 2000L;
 
     private static List<CatalogQuest> catalog = Collections.emptyList();
+    private static List<QuestTabDefinition> automaticTabs = Collections.emptyList();
     private static final Map<UUID, Long> lastRequest = new HashMap<UUID, Long>();
     private static int catalogVersion;
     private static boolean catalogLoaded;
@@ -56,6 +65,7 @@ public final class CustomNpcQuestService {
         if (!Loader.isModLoaded("customnpcs") || QuestController.instance == null
                 || QuestController.instance.quests == null) {
             catalog = Collections.emptyList();
+            automaticTabs = Collections.emptyList();
             catalogLoaded = false;
             catalogVersion++;
             return 0;
@@ -84,14 +94,10 @@ public final class CustomNpcQuestService {
 
         List<CatalogQuest> rebuilt = new ArrayList<CatalogQuest>();
         for (Quest quest : quests) {
-            if (rebuilt.size() < MAX_QUESTS) {
-                try {
-                    rebuilt.add(new CatalogQuest(quest));
-                } catch (Throwable ignored) {
-                }
-            }
+            rebuilt.add(new CatalogQuest(quest));
         }
         catalog = Collections.unmodifiableList(rebuilt);
+        automaticTabs = automaticTabs(rebuilt);
         catalogLoaded = true;
         catalogVersion++;
         return rebuilt.size();
@@ -99,6 +105,7 @@ public final class CustomNpcQuestService {
 
     public static void reset() {
         catalog = Collections.emptyList();
+        automaticTabs = Collections.emptyList();
         catalogVersion = 0;
         catalogLoaded = false;
         lastRequest.clear();
@@ -136,6 +143,45 @@ public final class CustomNpcQuestService {
         }
     }
 
+    public static void claim(EntityPlayerMP player, int questId) {
+        if (player == null || !Loader.isModLoaded("customnpcs") || QuestController.instance == null) {
+            return;
+        }
+        Quest quest = QuestController.instance.quests.get(Integer.valueOf(questId));
+        PlayerData data;
+        try {
+            data = PlayerData.get(player);
+        } catch (Throwable ignored) {
+            status(player, "Quest data is not available right now.");
+            return;
+        }
+        QuestData active = data == null || data.questData == null
+                ? null : data.questData.activeQuests.get(Integer.valueOf(questId));
+        if (quest == null || active == null || active.quest == null) {
+            status(player, "That quest is not active.");
+            send(player);
+            return;
+        }
+        if (quest.completion != EnumQuestCompletion.Instant) {
+            String npc = clean(quest.completerNpc, "the assigned NPC");
+            status(player, "Turn this quest in to " + npc + ".");
+            send(player);
+            return;
+        }
+        try {
+            if (quest.questInterface == null || !quest.questInterface.isCompleted(player)) {
+                status(player, "The quest objectives are not complete.");
+                send(player);
+                return;
+            }
+            NoppesUtilPlayer.questCompletion(player, questId);
+            send(player);
+        } catch (Throwable ignored) {
+            status(player, "CustomNPCs could not complete that quest.");
+            send(player);
+        }
+    }
+
     private static NBTTagCompound buildSnapshot(EntityPlayerMP player) {
         NBTTagCompound root = new NBTTagCompound();
         boolean available = Loader.isModLoaded("customnpcs") && QuestController.instance != null;
@@ -147,8 +193,15 @@ public final class CustomNpcQuestService {
 
         QuestTabStore store = QuestTabStore.get(player.getServer());
         NBTTagList tabs = new NBTTagList();
+        Set<String> tabScopes = new HashSet<String>();
         if (store != null) {
             for (QuestTabDefinition definition : store.all()) {
+                tabs.appendTag(definition.write());
+                tabScopes.add(tabScope(definition));
+            }
+        }
+        for (QuestTabDefinition definition : automaticTabs) {
+            if (tabScopes.add(tabScope(definition))) {
                 tabs.appendTag(definition.write());
             }
         }
@@ -179,9 +232,13 @@ public final class CustomNpcQuestService {
         private final String rank;
         private final String village;
         private final String description;
+        private final String completionText;
         private final String completer;
+        private final String repeat;
+        private final boolean instantCompletion;
         private final List<String> rewards;
         private final List<StaticObjective> objectives;
+        private final List<String> rules;
 
         private CatalogQuest(Quest quest) {
             this.quest = quest;
@@ -190,10 +247,14 @@ public final class CustomNpcQuestService {
             this.rank = rank(quest);
             Village matchedVillage = village(this.category);
             this.village = matchedVillage == null ? "" : matchedVillage.group();
-            this.description = limit(clean(quest.logText, "No mission briefing is available."), 3000);
+            this.description = limit(clean(quest.logText, "No mission briefing is available."), 16000);
+            this.completionText = limit(clean(quest.completeText, ""), 16000);
             this.completer = limit(clean(quest.completerNpc, ""), 120);
-            this.rewards = rewards(quest);
-            this.objectives = objectives(quest);
+            this.repeat = repeat(quest.repeat);
+            this.instantCompletion = quest.completion == EnumQuestCompletion.Instant;
+            this.rewards = safeRewards(quest);
+            this.objectives = safeObjectives(quest);
+            this.rules = rules(quest);
         }
 
         private NBTTagCompound write(EntityPlayerMP player, PlayerWrapper<EntityPlayerMP> wrapper,
@@ -205,7 +266,10 @@ public final class CustomNpcQuestService {
             tag.setString("Rank", rank);
             tag.setString("Village", village);
             tag.setString("Description", description);
+            tag.setString("CompletionText", completionText);
             tag.setString("Completer", completer);
+            tag.setString("Repeat", repeat);
+            tag.setBoolean("InstantCompletion", instantCompletion);
 
             QuestData active = playerQuests == null || playerQuests.activeQuests == null
                     ? null : playerQuests.activeQuests.get(Integer.valueOf(quest.id));
@@ -220,10 +284,11 @@ public final class CustomNpcQuestService {
                 status = canAccept(wrapper) ? 1 : 0;
             }
             tag.setByte("Status", (byte) status);
+            tag.setBoolean("Claimable", status == 3 && instantCompletion);
 
             NBTTagList objectiveTags = new NBTTagList();
             boolean liveObjectives = false;
-            if (wrapper != null) {
+            if (wrapper != null && active != null) {
                 try {
                     NBTTagList liveTags = new NBTTagList();
                     IQuestObjective[] objectives = quest.getObjectives(wrapper);
@@ -252,13 +317,21 @@ public final class CustomNpcQuestService {
                 for (StaticObjective objective : objectives) {
                     NBTTagCompound objectiveTag = new NBTTagCompound();
                     objectiveTag.setString("Text", objective.text);
-                    objectiveTag.setInteger("Progress", status == 4 ? objective.maximum : 0);
+                    objectiveTag.setInteger("Progress", status >= 3 ? objective.maximum : 0);
                     objectiveTag.setInteger("Max", objective.maximum);
-                    objectiveTag.setBoolean("Done", status == 4);
+                    objectiveTag.setBoolean("Done", status >= 3);
                     objectiveTags.appendTag(objectiveTag);
                 }
             }
             tag.setTag("Objectives", objectiveTags);
+
+            NBTTagList ruleTags = new NBTTagList();
+            for (String rule : rules) {
+                NBTTagCompound ruleTag = new NBTTagCompound();
+                ruleTag.setString("Text", rule);
+                ruleTags.appendTag(ruleTag);
+            }
+            tag.setTag("Rules", ruleTags);
 
             NBTTagList rewardTags = new NBTTagList();
             for (String reward : rewards) {
@@ -301,11 +374,68 @@ public final class CustomNpcQuestService {
         if (quest.rewardItems != null && quest.rewardItems.items != null) {
             for (ItemStack stack : quest.rewardItems.items) {
                 if (stack != null && !stack.isEmpty() && rewards.size() < 16) {
-                    rewards.add(stack.getCount() + "x " + limit(stack.getDisplayName(), 120));
+                    String prefix = quest.randomReward ? "Random item option: " : "";
+                    rewards.add(prefix + stack.getCount() + "x " + displayName(stack));
                 }
             }
         }
+        addFactionReward(rewards, quest.factionOptions.factionId, quest.factionOptions.factionPoints,
+                quest.factionOptions.decreaseFactionPoints);
+        addFactionReward(rewards, quest.factionOptions.faction2Id, quest.factionOptions.faction2Points,
+                quest.factionOptions.decreaseFaction2Points);
+        if (quest.mail != null && quest.mail.isValid()) {
+            rewards.add("Mail: " + limit(clean(quest.mail.subject, "Message"), 120)
+                    + " from " + limit(clean(quest.mail.sender, "Unknown"), 120));
+            if (quest.mail.items != null) {
+                for (ItemStack stack : quest.mail.items) {
+                    if (stack != null && !stack.isEmpty()) {
+                        rewards.add("Mail attachment: " + stack.getCount() + "x " + displayName(stack));
+                    }
+                }
+            }
+        }
+        if (!clean(quest.command, "").isEmpty()) {
+            rewards.add("Additional scripted reward");
+        }
+        if (quest.hasNewQuest()) {
+            Quest next = quest.getNextQuest();
+            if (next != null) {
+                rewards.add("Next quest: " + limit(clean(next.title, "Untitled Quest"), 120));
+            }
+        }
         return Collections.unmodifiableList(rewards);
+    }
+
+    private static List<String> safeRewards(Quest quest) {
+        try {
+            return rewards(quest);
+        } catch (Throwable ignored) {
+            return Collections.emptyList();
+        }
+    }
+
+    private static List<StaticObjective> safeObjectives(Quest quest) {
+        try {
+            return objectives(quest);
+        } catch (Throwable ignored) {
+            return Collections.emptyList();
+        }
+    }
+
+    private static List<String> rules(Quest quest) {
+        if (!(quest.questInterface instanceof QuestItem)) {
+            return Collections.emptyList();
+        }
+        QuestItem itemQuest = (QuestItem) quest.questInterface;
+        List<String> rules = new ArrayList<String>();
+        rules.add(itemQuest.leaveItems ? "Required items are kept." : "Required items are consumed on completion.");
+        if (itemQuest.ignoreDamage) {
+            rules.add("Item durability is ignored.");
+        }
+        if (itemQuest.ignoreNBT) {
+            rules.add("Item data is ignored.");
+        }
+        return Collections.unmodifiableList(rules);
     }
 
     private static List<StaticObjective> objectives(Quest quest) {
@@ -315,7 +445,7 @@ public final class CustomNpcQuestService {
             if (itemQuest.items != null && itemQuest.items.items != null) {
                 for (ItemStack stack : itemQuest.items.items) {
                     if (stack != null && !stack.isEmpty()) {
-                        objectives.add(new StaticObjective(stack.getDisplayName(), Math.max(1, stack.getCount())));
+                        objectives.add(new StaticObjective("Collect: " + displayName(stack), Math.max(1, stack.getCount())));
                     }
                 }
             }
@@ -332,16 +462,18 @@ public final class CustomNpcQuestService {
             addLocation(objectives, locationQuest.location3);
         } else if (quest.questInterface instanceof QuestDialog) {
             QuestDialog dialogQuest = (QuestDialog) quest.questInterface;
-            List<Integer> ids = new ArrayList<Integer>();
+            List<Map.Entry<Integer, Integer>> ids = new ArrayList<Map.Entry<Integer, Integer>>();
             if (dialogQuest.dialogs != null) {
-                for (Integer id : dialogQuest.dialogs.values()) {
-                    if (id != null) {
-                        ids.add(id);
-                    }
-                }
+                ids.addAll(dialogQuest.dialogs.entrySet());
             }
-            Collections.sort(ids);
-            for (Integer id : ids) {
+            Collections.sort(ids, new Comparator<Map.Entry<Integer, Integer>>() {
+                @Override
+                public int compare(Map.Entry<Integer, Integer> left, Map.Entry<Integer, Integer> right) {
+                    return Integer.compare(left.getKey().intValue(), right.getKey().intValue());
+                }
+            });
+            for (Map.Entry<Integer, Integer> entry : ids) {
+                Integer id = entry.getValue();
                 if (id == null || id.intValue() <= 0) {
                     continue;
                 }
@@ -350,6 +482,8 @@ public final class CustomNpcQuestService {
                 String name = dialog == null ? "Read dialogue " + id : "Read: " + clean(dialog.title, "dialogue " + id);
                 objectives.add(new StaticObjective(name, 1));
             }
+        } else if (quest.questInterface != null) {
+            objectives.add(new StaticObjective("Objective details become available when the quest starts.", 1));
         }
 
         if (objectives.size() > MAX_OBJECTIVES) {
@@ -384,6 +518,68 @@ public final class CustomNpcQuestService {
             this.text = limit(text, 300);
             this.maximum = maximum;
         }
+    }
+
+    private static List<QuestTabDefinition> automaticTabs(List<CatalogQuest> quests) {
+        Map<String, String> categories = new LinkedHashMap<String, String>();
+        for (CatalogQuest quest : quests) {
+            if (!quest.rank.isEmpty() || !quest.village.isEmpty()) {
+                continue;
+            }
+            String key = quest.category.toLowerCase(Locale.ROOT);
+            if (!categories.containsKey(key)) {
+                categories.put(key, quest.category);
+            }
+        }
+        List<QuestTabDefinition> tabs = new ArrayList<QuestTabDefinition>();
+        for (Map.Entry<String, String> category : categories.entrySet()) {
+            String slug = category.getKey().replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
+            if (slug.isEmpty()) {
+                slug = "missions";
+            }
+            slug = limit(slug, 16);
+            String id = "auto_" + slug + "_" + Integer.toHexString(category.getKey().hashCode());
+            tabs.add(new QuestTabDefinition(id, limit(category.getValue(), 28), category.getValue(), ""));
+        }
+        return Collections.unmodifiableList(tabs);
+    }
+
+    private static String tabScope(QuestTabDefinition definition) {
+        return clean(definition.getCategoryFilter(), "").toLowerCase(Locale.ROOT) + "\u0000"
+                + clean(definition.getVillage(), "").toLowerCase(Locale.ROOT);
+    }
+
+    private static void addFactionReward(List<String> rewards, int id, int points, boolean decrease) {
+        if (id < 0 || points <= 0 || FactionController.instance == null) {
+            return;
+        }
+        Faction faction = FactionController.instance.getFaction(id);
+        if (faction != null) {
+            rewards.add((decrease ? "-" : "+") + points + " " + limit(clean(faction.name, "Faction"), 120)
+                    + " faction points");
+        }
+    }
+
+    private static String displayName(ItemStack stack) {
+        try {
+            return limit(clean(stack.getDisplayName(), "Unknown item"), 120);
+        } catch (Throwable ignored) {
+            return "Unknown item";
+        }
+    }
+
+    private static String repeat(EnumQuestRepeat repeat) {
+        if (repeat == null || repeat == EnumQuestRepeat.NONE) return "One time";
+        if (repeat == EnumQuestRepeat.REPEATABLE) return "Repeatable";
+        if (repeat == EnumQuestRepeat.MCDAILY) return "Daily (Minecraft time)";
+        if (repeat == EnumQuestRepeat.MCWEEKLY) return "Weekly (Minecraft time)";
+        if (repeat == EnumQuestRepeat.RLDAILY) return "Daily";
+        if (repeat == EnumQuestRepeat.RLWEEKLY) return "Weekly";
+        return repeat.name();
+    }
+
+    private static void status(EntityPlayerMP player, String message) {
+        player.sendStatusMessage(new TextComponentString(message), true);
     }
 
     private static Pattern rankPattern(String rank) {
