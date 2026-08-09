@@ -7,6 +7,14 @@ import java.util.List;
 
 public class Arena {
 
+    // How far the invisible boundary extends below the floor and above it. The
+    // "above" value needs to comfortably clear tall abilities (Susanoo, Golem, etc.)
+    // or players using them get caught in the boundary snap-back and effectively
+    // stuck fighting the enforcement every tick. If a taller ability still clips
+    // this in practice, bump Y_PADDING_ABOVE further - it's a single number to tune.
+    private static final double Y_PADDING_BELOW = 5;
+    private static final double Y_PADDING_ABOVE = 45;
+
     public String id;
     public RankedLocation corner1;
     public RankedLocation corner2;
@@ -50,8 +58,9 @@ public class Arena {
 
     /**
      * Checks if a location is within the arena's bounding cuboid. Y bounds get a
-     * generous automatic pad (same fix as the original plugin) so gravity jitter or
-     * both corners being set at similar heights doesn't cause false boundary triggers.
+     * generous automatic pad (see Y_PADDING_BELOW/ABOVE above) so gravity jitter,
+     * both corners being set at similar heights, or tall abilities extending upward
+     * don't cause false boundary triggers.
      */
     public boolean contains(RankedLocation loc) {
         if (corner1 == null || corner2 == null) return false;
@@ -59,8 +68,8 @@ public class Arena {
 
         double minX = Math.min(corner1.x, corner2.x);
         double maxX = Math.max(corner1.x, corner2.x);
-        double minY = Math.min(corner1.y, corner2.y) - 5;
-        double maxY = Math.max(corner1.y, corner2.y) + 15;
+        double minY = Math.min(corner1.y, corner2.y) - Y_PADDING_BELOW;
+        double maxY = Math.max(corner1.y, corner2.y) + Y_PADDING_ABOVE;
         double minZ = Math.min(corner1.z, corner2.z);
         double maxZ = Math.max(corner1.z, corner2.z);
 
