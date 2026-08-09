@@ -32,6 +32,8 @@ public final class RankedClientData {
     private static volatile boolean isPartyLeader = false;
     private static volatile List<String> partyMemberNames = new ArrayList<>();
     private static volatile String pendingInviteFrom = "";
+    private static volatile int partyTeleportCooldownSeconds = 0;
+    private static volatile List<String> invitablePlayers = new ArrayList<>();
 
     public static class LeaderboardEntry {
         public final String playerName;
@@ -58,6 +60,8 @@ public final class RankedClientData {
         isPartyLeader = msg.isPartyLeader();
         partyMemberNames = new ArrayList<>(msg.getPartyMemberNames());
         pendingInviteFrom = msg.getPendingInviteFrom();
+        partyTeleportCooldownSeconds = msg.getPartyTeleportCooldownSeconds();
+        invitablePlayers = new ArrayList<>(msg.getOnlinePlayerNames());
 
         List<LeaderboardEntry> entries = new ArrayList<>();
         List<String> names = msg.getLeaderboardNames();
@@ -104,4 +108,7 @@ public final class RankedClientData {
     public static String getPendingInviteFrom() {
         return (pendingInviteFrom == null || pendingInviteFrom.isEmpty()) ? null : pendingInviteFrom;
     }
+
+    public static int getPartyTeleportCooldownSeconds() { return partyTeleportCooldownSeconds; }
+    public static List<String> getInvitablePlayers() { return invitablePlayers; }
 }
