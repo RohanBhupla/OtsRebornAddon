@@ -1,0 +1,15 @@
+{
+  "display": {
+    "background": "minecraft:textures/blocks/grass_top.png",
+    "icon": {"item": "narutomod:katon"},
+    "title": {"text": "Natures"},
+    "description": {"text": "Master Fire, Water, Wind, Lightning, and Earth techniques."},
+    "frame": "goal",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false,
+    "x": 0,
+    "y": 0
+  },
+  "criteria": {"root": {"trigger": "minecraft:impossible"}}
+}

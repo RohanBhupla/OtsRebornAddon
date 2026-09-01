@@ -1,14 +1,10 @@
 package net.rebornaddon.ranked.party;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * A group of 2-3 players queueing together, guaranteed to land on the same team.
- * Ordered by join time - index 0 is always the original leader unless leadership
- * has been passed on (see PartyManager.leaveParty).
- */
 public class Party {
 
     public static final int MAX_SIZE = 3;
@@ -45,22 +41,21 @@ public class Party {
     }
 
     public List<UUID> getMemberUuids() {
-        return memberUuids;
+        return Collections.unmodifiableList(new ArrayList<UUID>(memberUuids));
     }
 
     public List<String> getMemberNames() {
-        return memberNames;
+        return Collections.unmodifiableList(new ArrayList<String>(memberNames));
     }
 
     public void addMember(UUID uuid, String name) {
+        if (uuid == null || contains(uuid) || isFull()) {
+            return;
+        }
         memberUuids.add(uuid);
-        memberNames.add(name);
+        memberNames.add(name == null ? "" : name);
     }
 
-    /** Removes a member. If they were the leader, the next-oldest member (index 0
-     *  after removal) automatically becomes the new leader - no explicit promotion
-     *  step needed given the ordering invariant. Returns true if the party is now
-     *  empty and should be discarded entirely. */
     public boolean removeMember(UUID uuid) {
         int idx = memberUuids.indexOf(uuid);
         if (idx >= 0) {
@@ -70,17 +65,14 @@ public class Party {
         return memberUuids.isEmpty();
     }
 
-    /** Keeps a cached display name fresh (players can change name, rejoin, etc). */
     public void updateMemberName(UUID uuid, String currentName) {
         int idx = memberUuids.indexOf(uuid);
         if (idx >= 0) memberNames.set(idx, currentName);
     }
 
-    /** Moves the given member to the front of the list, making them the new leader.
-     *  No-op if they're not actually in this party. */
     public void promoteToLeader(UUID uuid) {
         int idx = memberUuids.indexOf(uuid);
-        if (idx <= 0) return; // already leader, or not a member at all
+        if (idx <= 0) return;
         UUID movedUuid = memberUuids.remove(idx);
         String movedName = memberNames.remove(idx);
         memberUuids.add(0, movedUuid);

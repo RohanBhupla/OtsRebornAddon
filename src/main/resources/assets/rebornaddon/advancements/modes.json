@@ -1,0 +1,15 @@
+{
+  "display": {
+    "background": "minecraft:textures/blocks/glowstone.png",
+    "icon": {"item": "narutomod:senjutsu"},
+    "title": {"text": "Modes"},
+    "description": {"text": "Learn the modes enabled by the server."},
+    "frame": "goal",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false,
+    "x": 0,
+    "y": 0
+  },
+  "criteria": {"root": {"trigger": "minecraft:impossible"}}
+}

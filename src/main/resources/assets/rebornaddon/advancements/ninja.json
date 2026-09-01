@@ -1,0 +1,25 @@
+{
+  "display": {
+    "background": "minecraft:textures/blocks/stone.png",
+    "icon": {"item": "narutomod:kunai"},
+    "title": {"text": "Ninja"},
+    "description": {"text": "Your gateway to the shinobi systems."},
+    "frame": "goal",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false,
+    "x": 0,
+    "y": 0
+  },
+  "criteria": {
+    "ninjaachievement": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": {
+        "items": [
+          {"item": "narutomod:kunai", "count": {"min": 1, "max": 64}},
+          {"item": "narutomod:shuriken", "count": {"min": 1, "max": 64}}
+        ]
+      }
+    }
+  }
+}

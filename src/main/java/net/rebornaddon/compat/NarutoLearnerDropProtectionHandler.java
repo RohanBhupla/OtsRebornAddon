@@ -170,7 +170,7 @@ public final class NarutoLearnerDropProtectionHandler {
         return null;
     }
 
-    private static boolean isProtectedLearner(ItemStack stack) {
+    public static boolean isProtectedLearner(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return false;
         }

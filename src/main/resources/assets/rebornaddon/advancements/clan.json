@@ -1,0 +1,15 @@
+{
+  "display": {
+    "background": "minecraft:textures/blocks/bookshelf.png",
+    "icon": {"item": "minecraft:book"},
+    "title": {"text": "Clan"},
+    "description": {"text": "Clan progression will be added here."},
+    "frame": "goal",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false,
+    "x": 0,
+    "y": 0
+  },
+  "criteria": {"root": {"trigger": "minecraft:impossible"}}
+}

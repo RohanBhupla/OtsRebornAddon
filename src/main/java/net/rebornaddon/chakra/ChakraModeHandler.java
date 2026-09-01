@@ -27,6 +27,7 @@ import net.narutomod.Chakra;
 import net.rebornaddon.village.LuckPermsBridge;
 import net.rebornaddon.village.Village;
 import net.rebornaddon.village.network.RebornAddonNetwork;
+import net.rebornaddon.mode.ModeConfigurationService;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -80,6 +81,10 @@ public final class ChakraModeHandler {
         ChakraMode active = activeModes.get(player.getUniqueID());
         if (active == mode) {
             deactivate(player, mode, " deactivated.");
+            return;
+        }
+        if (!ModeConfigurationService.INSTANCE.canActivate(player,
+                "rebornaddon:" + mode.key() + "_chakra_mode")) {
             return;
         }
         if (active != null) {

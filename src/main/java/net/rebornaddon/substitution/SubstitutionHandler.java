@@ -30,6 +30,7 @@ import net.rebornaddon.config.RebornAddonConfig;
 import net.rebornaddon.village.LuckPermsBridge;
 import net.rebornaddon.village.Village;
 import net.rebornaddon.village.network.RebornAddonNetwork;
+import net.rebornaddon.state.PlayerStateLifecycleService;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -67,6 +68,7 @@ public final class SubstitutionHandler {
             sendActionBarError(player, "Substitution is on cooldown for " + seconds + "s.");
             return;
         }
+        if (cooldown != null && cooldown.longValue() <= now) cooldowns.remove(player.getUniqueID());
 
         Village village = resolveVillage(player);
         if (village == null) {
@@ -139,6 +141,10 @@ public final class SubstitutionHandler {
         player.setPositionAndUpdate(target.x, target.y, target.z);
         player.fallDistance = 0.0F;
         player.hurtResistantTime = Math.max(player.hurtResistantTime, INVULNERABLE_TICKS);
+        PlayerStateLifecycleService.INSTANCE.begin(player, "evasion",
+                "rebornaddon:substitution", INVULNERABLE_TICKS * 50L,
+                PlayerStateLifecycleService.CLEAR_HURT_RESISTANCE,
+                true, true, true);
         if (applyCooldown) {
             cooldowns.put(player.getUniqueID(), Long.valueOf(now + COOLDOWN_TICKS));
         }
@@ -174,6 +180,7 @@ public final class SubstitutionHandler {
 
         Long until = invulnerableUntil.get(entity.getUniqueID());
         if (until == null || entity.world.getTotalWorldTime() > until.longValue()) {
+            if (until != null) invulnerableUntil.remove(entity.getUniqueID());
             return;
         }
 
@@ -243,6 +250,12 @@ public final class SubstitutionHandler {
         living.motionX = 0.0D;
         living.motionZ = 0.0D;
         if (living instanceof EntityPlayerMP) {
+            PlayerStateLifecycleService.INSTANCE.begin((EntityPlayerMP) living,
+                    "paralysis", "rebornaddon:substitution", duration * 50L,
+                    PlayerStateLifecycleService.CLEAR_SLOWNESS
+                            | PlayerStateLifecycleService.CLEAR_MINING_FATIGUE
+                            | PlayerStateLifecycleService.CLEAR_WEAKNESS,
+                    true, true, true);
             sendActionBarError((EntityPlayerMP) living, "The substitution caught you off guard.");
         }
     }

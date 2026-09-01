@@ -4,14 +4,16 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.GuiScreen;
+import net.rebornaddon.client.RebornScaledGuiScreen;
 import net.rebornaddon.gui.theme.Theme;
+import net.rebornaddon.gui.theme.GuiChrome;
+import net.rebornaddon.client.ClientLocalization;
 import net.rebornaddon.village.Village;
 import net.rebornaddon.village.network.RebornAddonNetwork;
 
 import java.io.IOException;
 
-public class GuiVillageSelect extends GuiScreen {
+public class GuiVillageSelect extends RebornScaledGuiScreen {
     private static final int BUTTON_BASE = 700;
     private static final int PANEL_MAX_W = 520;
     private static final int PANEL_MAX_H = 272;
@@ -55,10 +57,11 @@ public class GuiVillageSelect extends GuiScreen {
                 buttonList.add(new VillageButton(BUTTON_BASE + villages[i].id(), x, y, w, buttonH, villages[i]));
             }
         } else {
-            int h = 30;
+            int gap = 4;
+            int h = Math.max(24, Math.min(30, (panelH - 74 - gap * (villages.length - 1)) / villages.length));
             for (int i = 0; i < villages.length; i++) {
                 buttonList.add(new VillageButton(BUTTON_BASE + villages[i].id(), panelX + MARGIN,
-                        top + i * (h + 5), availableW, h, villages[i]));
+                        top + i * (h + gap), availableW, h, villages[i]));
             }
         }
     }
@@ -75,27 +78,23 @@ public class GuiVillageSelect extends GuiScreen {
     }
 
     @Override
-    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+    protected void drawScaledScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
         drawPanel();
-        super.drawScreen(mouseX, mouseY, partialTicks);
+        drawScaledControls(mouseX, mouseY, partialTicks);
     }
 
     private void drawPanel() {
         FontRenderer fr = Minecraft.getMinecraft().fontRenderer;
         int right = panelX + panelW;
-        int bottom = panelY + panelH;
+        GuiChrome.frame(panelX, panelY, panelW, panelH, Theme.GOLD);
+        GuiChrome.header(panelX + 2, panelY + 5, panelW - 4, 48, Theme.GOLD);
 
-        drawRect(panelX - 6, panelY - 6, right + 6, bottom + 6, 0x99000000);
-        drawRect(panelX, panelY, right, bottom, Theme.GOLD_DARK);
-        drawRect(panelX + 2, panelY + 2, right - 2, bottom - 2, Theme.PANEL_BG);
-        drawRect(panelX + 4, panelY + 4, right - 4, panelY + 52, Theme.PANEL_BG_LIGHT);
-        drawRect(panelX + 4, panelY + 52, right - 4, panelY + 53, Theme.GOLD);
-
-        fr.drawString("Choose Your Village", panelX + MARGIN, panelY + 14, Theme.TEXT_LIGHT);
-        String mark = "Stone  Leaf  Cloud  Sand  Mist";
+        fr.drawString(ClientLocalization.format("gui.rebornaddon.village.choose", "Choose Your Village"),
+                panelX + MARGIN, panelY + 14, Theme.TEXT_LIGHT);
+        String mark = ClientLocalization.format("gui.rebornaddon.village.allegiance", "Permanent Allegiance");
         fr.drawString(mark, right - MARGIN - fr.getStringWidth(mark), panelY + 14, Theme.TEXT_MUTED);
-        drawRect(panelX + MARGIN, panelY + 42, right - MARGIN, panelY + 43, 0x664C3720);
+        GuiChrome.rule(panelX + MARGIN, right - MARGIN, panelY + 42, Theme.GOLD);
     }
 
     @Override
@@ -119,17 +118,38 @@ public class GuiVillageSelect extends GuiScreen {
 
             FontRenderer fr = minecraft.fontRenderer;
             hovered = mouseX >= x && mouseY >= y && mouseX < x + width && mouseY < y + height;
-            int fill = hovered ? 0xF02B221A : Theme.PARCHMENT_DARK;
+            int fill = hovered ? Theme.PANEL_BG_RAISED : Theme.PARCHMENT_DARK;
             int accent = hovered ? village.hoverColor() : village.accentColor();
 
-            Gui.drawRect(x, y, x + width, y + height, Theme.BUTTON_BORDER);
-            Gui.drawRect(x + 1, y + 1, x + width - 1, y + height - 1, fill);
-            Gui.drawRect(x + 1, y + 1, x + 6, y + height - 1, accent);
-            Gui.drawRect(x + 11, y + 9, x + 23, y + height - 9, accent);
-            Gui.drawRect(x + 13, y + 11, x + 21, y + height - 11, 0xAA000000);
+            Gui.drawRect(x + 2, y + 2, x + width + 2, y + height + 2, 0x62000000);
+            Gui.drawRect(x, y, x + width, y + height, Theme.EDGE_DARK);
+            Gui.drawRect(x + 1, y + 1, x + width - 1, y + height - 1,
+                    hovered ? accent : Theme.BUTTON_BORDER);
+            Gui.drawRect(x + 2, y + 2, x + width - 2, y + height - 2, fill);
+            Gui.drawRect(x + 2, y + 2, x + width - 2, y + 5,
+                    hovered ? 0x36FFFFFF : Theme.PARCHMENT_LIGHT);
+            Gui.drawRect(x + 2, y + 2, x + 6, y + height - 2, accent);
+            Gui.drawRect(x + width - 19, y + height - 6,
+                    x + width - 7, y + height - 5, accent);
 
-            String title = trim(fr, village.displayName(), width - 44);
-            fr.drawString(title, x + 32, y + (height - 8) / 2, hovered ? Theme.WHITE : Theme.TEXT_LIGHT);
+            int sealSize = Math.max(14, Math.min(24, height - 10));
+            int sealX = x + 11;
+            int sealY = y + (height - sealSize) / 2;
+            Gui.drawRect(sealX + 1, sealY + 2, sealX + sealSize + 2,
+                    sealY + sealSize + 2, 0x60000000);
+            Gui.drawRect(sealX, sealY, sealX + sealSize, sealY + sealSize, Theme.EDGE_DARK);
+            Gui.drawRect(sealX + 1, sealY + 1, sealX + sealSize - 1,
+                    sealY + sealSize - 1, accent);
+            Gui.drawRect(sealX + 3, sealY + 3, sealX + sealSize - 3,
+                    sealY + sealSize - 3, Theme.INK);
+            String initial = village.displayName().substring(0, 1);
+            fr.drawString(initial, sealX + (sealSize - fr.getStringWidth(initial)) / 2,
+                    sealY + (sealSize - fr.FONT_HEIGHT) / 2, accent);
+
+            int textX = sealX + sealSize + 9;
+            String title = trim(fr, village.displayName(), width - (textX - x) - 10);
+            fr.drawString(title, textX, y + Math.max(1, (height - fr.FONT_HEIGHT) / 2),
+                    hovered ? Theme.WHITE : Theme.TEXT_LIGHT);
             mouseDragged(minecraft, mouseX, mouseY);
         }
 

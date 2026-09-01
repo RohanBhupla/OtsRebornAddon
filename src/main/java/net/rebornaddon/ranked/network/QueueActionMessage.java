@@ -20,11 +20,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Sent by the hub GUI for queue/forfeit actions AND party actions - one message type
- * for all of it, with an int action code and an optional string parameter (only used
- * by ACTION_PARTY_INVITE, for the target player's name).
- */
 public class QueueActionMessage implements IMessage {
 
     public static final int ACTION_QUEUE = 0;
@@ -38,10 +33,10 @@ public class QueueActionMessage implements IMessage {
     public static final int ACTION_PARTY_PROMOTE = 8;
 
     private int action;
-    private int modeNetId;    // only meaningful when action == ACTION_QUEUE
-    private String targetName = ""; // only meaningful when action == ACTION_PARTY_INVITE
+    private int modeNetId;
+    private String targetName = "";
 
-    public QueueActionMessage() {} // required no-arg constructor for IMessage
+    public QueueActionMessage() {}
 
     public QueueActionMessage(int action, int modeNetId) {
         this(action, modeNetId, "");
@@ -57,7 +52,7 @@ public class QueueActionMessage implements IMessage {
     public void toBytes(ByteBuf buf) {
         buf.writeInt(action);
         buf.writeInt(modeNetId);
-        ByteBufUtils.writeUTF8String(buf, targetName);
+        ByteBufUtils.writeUTF8String(buf, targetName.length() > 16 ? targetName.substring(0, 16) : targetName);
     }
 
     @Override
@@ -65,14 +60,13 @@ public class QueueActionMessage implements IMessage {
         action = buf.readInt();
         modeNetId = buf.readInt();
         targetName = ByteBufUtils.readUTF8String(buf);
+        if (targetName.length() > 16) targetName = targetName.substring(0, 16);
     }
 
     public static class Handler implements IMessageHandler<QueueActionMessage, IMessage> {
         @Override
         public IMessage onMessage(QueueActionMessage message, MessageContext ctx) {
             EntityPlayerMP player = ctx.getServerHandler().player;
-            // Network handlers run off the main thread - anything touching game state
-            // needs to be scheduled back onto it.
             player.getServerWorld().addScheduledTask(() -> handle(message, player));
             return null;
         }
@@ -97,8 +91,7 @@ public class QueueActionMessage implements IMessage {
                     handlePartyAccept(player);
                     break;
                 case ACTION_PARTY_LEAVE:
-                    RankedSystem.partyManager.leaveParty(player.getUniqueID());
-                    player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "You left your party."));
+                    handlePartyLeave(player);
                     break;
                 case ACTION_PARTY_TELEPORT:
                     handlePartyTeleport(message, player);
@@ -115,6 +108,11 @@ public class QueueActionMessage implements IMessage {
         }
 
         private void handleQueue(QueueActionMessage message, EntityPlayerMP player) {
+            if (!RankedSystem.seasonManager.isAcceptingMatches()) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "Ranked play is currently paused."));
+                return;
+            }
             UUID uuid = player.getUniqueID();
             if (RankedSystem.matchManager.isInMatch(uuid)) {
                 player.sendMessage(new TextComponentString(TextFormatting.RED + "You're already in a match!"));
@@ -122,6 +120,10 @@ public class QueueActionMessage implements IMessage {
             }
 
             MatchMode mode = MatchMode.fromNetId(message.modeNetId);
+            if (mode == null) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED + "Unknown queue mode."));
+                return;
+            }
             Party party = RankedSystem.partyManager.getParty(uuid);
 
             if (party != null && party.size() > 1) {
@@ -143,8 +145,17 @@ public class QueueActionMessage implements IMessage {
                 List<Integer> elos = new ArrayList<>();
                 for (UUID memberUuid : party.getMemberUuids()) {
                     EntityPlayerMP memberPlayer = server.getPlayerList().getPlayerByUUID(memberUuid);
-                    String memberName = memberPlayer != null ? memberPlayer.getName()
-                            : party.getMemberNames().get(party.getMemberUuids().indexOf(memberUuid));
+                    if (memberPlayer == null) {
+                        player.sendMessage(new TextComponentString(TextFormatting.RED
+                                + "Every party member must be online to queue."));
+                        return;
+                    }
+                    if (RankedSystem.matchManager.isInMatch(memberUuid)) {
+                        player.sendMessage(new TextComponentString(TextFormatting.RED
+                                + memberPlayer.getName() + " is already in a match."));
+                        return;
+                    }
+                    String memberName = memberPlayer.getName();
                     PlayerStats stats = RankedSystem.eloManager.getStats(memberUuid, memberName);
                     uuids.add(memberUuid);
                     names.add(memberName);
@@ -176,6 +187,11 @@ public class QueueActionMessage implements IMessage {
                         + "Player '" + message.targetName + "' not found (must be online)."));
                 return;
             }
+            if (isBusy(player.getUniqueID()) || isBusy(target.getUniqueID())) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "Players cannot change parties while queued or in a match."));
+                return;
+            }
 
             String error = RankedSystem.partyManager.invite(player.getUniqueID(), player.getName(),
                     target.getUniqueID(), target.getName());
@@ -190,13 +206,36 @@ public class QueueActionMessage implements IMessage {
         }
 
         private void handlePartyAccept(EntityPlayerMP player) {
-            String inviterName = RankedSystem.partyManager.acceptInvite(player.getUniqueID(), player.getName());
+            MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
+            if (isBusy(player.getUniqueID())) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "Leave your queue or match before joining a party."));
+                return;
+            }
+            String inviterName = RankedSystem.partyManager.acceptInvite(player.getUniqueID(), player.getName(),
+                    id -> server.getPlayerList().getPlayerByUUID(id) != null && !isBusy(id));
             if (inviterName == null) {
                 player.sendMessage(new TextComponentString(TextFormatting.RED
                         + "No pending invite (it may have expired)."));
                 return;
             }
             player.sendMessage(new TextComponentString(TextFormatting.GREEN + "Joined " + inviterName + "'s party!"));
+        }
+
+        private void handlePartyLeave(EntityPlayerMP player) {
+            UUID id = player.getUniqueID();
+            if (RankedSystem.matchManager.isInMatch(id)) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "You cannot leave a party during a match."));
+                return;
+            }
+            RankedSystem.queueManager.leaveAll(id);
+            RankedSystem.partyManager.leaveParty(id);
+            player.sendMessage(new TextComponentString(TextFormatting.YELLOW + "You left your party."));
+        }
+
+        private boolean isBusy(UUID id) {
+            return RankedSystem.queueManager.isQueued(id) || RankedSystem.matchManager.isInMatch(id);
         }
 
         private void handlePartyTeleport(QueueActionMessage message, EntityPlayerMP player) {
@@ -242,11 +281,21 @@ public class QueueActionMessage implements IMessage {
         }
 
         private void handlePartyKick(QueueActionMessage message, EntityPlayerMP player) {
+            if (isBusy(player.getUniqueID())) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "Leave the queue or match before changing the party roster."));
+                return;
+            }
             MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
             EntityPlayerMP target = server.getPlayerList().getPlayerByUsername(message.targetName);
             UUID targetUuid = target != null ? target.getUniqueID() : findPartyMemberUuidByName(player, message.targetName);
             if (targetUuid == null) {
                 player.sendMessage(new TextComponentString(TextFormatting.RED + "Couldn't find that party member."));
+                return;
+            }
+            if (isBusy(targetUuid)) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "That member is queued or in a match."));
                 return;
             }
 
@@ -263,11 +312,21 @@ public class QueueActionMessage implements IMessage {
         }
 
         private void handlePartyPromote(QueueActionMessage message, EntityPlayerMP player) {
+            if (isBusy(player.getUniqueID())) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "Leave the queue or match before changing party leadership."));
+                return;
+            }
             MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
             EntityPlayerMP target = server.getPlayerList().getPlayerByUsername(message.targetName);
             UUID targetUuid = target != null ? target.getUniqueID() : findPartyMemberUuidByName(player, message.targetName);
             if (targetUuid == null) {
                 player.sendMessage(new TextComponentString(TextFormatting.RED + "Couldn't find that party member."));
+                return;
+            }
+            if (isBusy(targetUuid)) {
+                player.sendMessage(new TextComponentString(TextFormatting.RED
+                        + "That member is queued or in a match."));
                 return;
             }
 
@@ -283,8 +342,6 @@ public class QueueActionMessage implements IMessage {
             }
         }
 
-        /** Fallback lookup for kick/promote if the target happens to be offline right
-         *  now - matches by cached party member name rather than requiring them online. */
         private UUID findPartyMemberUuidByName(EntityPlayerMP requester, String targetName) {
             Party party = RankedSystem.partyManager.getParty(requester.getUniqueID());
             if (party == null) return null;

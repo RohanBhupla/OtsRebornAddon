@@ -38,7 +38,8 @@ public enum MatchMode {
         switch (id) {
             case 0: return ONE_V_ONE;
             case 1: return TWO_V_TWO;
-            default: return THREE_V_THREE;
+            case 2: return THREE_V_THREE;
+            default: return null;
         }
     }
 }

@@ -8,7 +8,7 @@ import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentString;
-import net.rebornaddon.quest.CustomNpcQuestService;
+import net.rebornaddon.quest.NativeQuestService;
 import net.rebornaddon.quest.QuestTabDefinition;
 import net.rebornaddon.quest.QuestTabStore;
 import net.rebornaddon.village.Village;
@@ -52,16 +52,16 @@ public class RebornQuestsCommand extends CommandBase {
 
         if ("sync".equalsIgnoreCase(args[0])) {
             EntityPlayerMP player = getCommandSenderAsPlayer(sender);
-            CustomNpcQuestService.send(player);
+            NativeQuestService.send(player);
             sender.sendMessage(new TextComponentString("Quest screen data refreshed."));
             return;
         }
 
         requireAdmin(server, sender);
         if ("refresh".equalsIgnoreCase(args[0])) {
-            int count = CustomNpcQuestService.refresh();
-            CustomNpcQuestService.sendAll(server);
-            sender.sendMessage(new TextComponentString("Loaded " + count + " CustomNPC quests into the mission tabs."));
+            int count = NativeQuestService.refresh();
+            NativeQuestService.sendAll(server);
+            sender.sendMessage(new TextComponentString("Loaded " + count + " native quests into the mission tabs."));
             return;
         }
 
@@ -98,19 +98,19 @@ public class RebornQuestsCommand extends CommandBase {
             if (!store.remove(args[2])) {
                 throw new CommandException("No custom quest tab exists with id '" + args[2] + "'.");
             }
-            CustomNpcQuestService.sendAll(server);
+            NativeQuestService.sendAll(server);
             sender.sendMessage(new TextComponentString("Removed quest tab '" + args[2] + "'."));
             return;
         }
 
         if ("create".equals(action)) {
             if (args.length < 4) {
-                throw new WrongUsageException("/rebornquests tabs create <id> <title>|<CustomNPC category>");
+                throw new WrongUsageException("/rebornquests tabs create <id> <title>|<category>");
             }
             create(store, args[2], "", join(args, 3));
         } else if ("createvillage".equals(action)) {
             if (args.length < 5) {
-                throw new WrongUsageException("/rebornquests tabs createvillage <id> <village> <title>|<CustomNPC category>");
+                throw new WrongUsageException("/rebornquests tabs createvillage <id> <village> <title>|<category>");
             }
             Village village = Village.byGroup(args[3]);
             if (village == null) {
@@ -121,7 +121,7 @@ public class RebornQuestsCommand extends CommandBase {
             throw new WrongUsageException("/rebornquests tabs <list|create|createvillage|remove>");
         }
 
-        CustomNpcQuestService.sendAll(server);
+        NativeQuestService.sendAll(server);
         sender.sendMessage(new TextComponentString("Created quest tab '" + args[2] + "'."));
     }
 
@@ -133,7 +133,7 @@ public class RebornQuestsCommand extends CommandBase {
 
         int separator = payload.indexOf('|');
         if (separator < 1 || separator == payload.length() - 1) {
-            throw new CommandException("Separate the tab title and CustomNPC category with |.");
+            throw new CommandException("Separate the tab title and category with |.");
         }
         String title = payload.substring(0, separator).trim();
         String filter = payload.substring(separator + 1).trim();

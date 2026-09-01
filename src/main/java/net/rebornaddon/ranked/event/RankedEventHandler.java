@@ -22,19 +22,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-/**
- * The server-side glue between actual Forge events and MatchManager/QueueManager.
- * MatchManager itself has no event dependencies at all - this class is the only
- * thing that knows about LivingDeathEvent, PlayerRespawnEvent, etc., and just calls
- * straight into the manager methods.
- */
 public class RankedEventHandler {
 
     private int tickCounter = 0;
 
-    // Players whose respawn needs finalizing (gamemode/inventory/teleport) on the
-    // NEXT tick after they actually respawn - mirrors the original plugin's "don't
-    // touch a dead player" fix, adapted since Forge has no scheduleSyncDelayedTask.
     private final Set<UUID> pendingFinalizeNextTick = new HashSet<>();
 
     @SubscribeEvent
@@ -44,8 +35,6 @@ public class RankedEventHandler {
 
         MatchManager matchManager = RankedSystem.matchManager;
 
-        // Finalize any respawns queued up from last tick, now that the respawn itself
-        // has actually completed.
         if (!pendingFinalizeNextTick.isEmpty()) {
             for (UUID uuid : new ArrayList<>(pendingFinalizeNextTick)) {
                 matchManager.finalizePendingRespawn(uuid);
@@ -53,7 +42,6 @@ public class RankedEventHandler {
             pendingFinalizeNextTick.clear();
         }
 
-        // Boundary/countdown-freeze check every tick for every match participant.
         for (EntityPlayerMP p : net.minecraftforge.fml.common.FMLCommonHandler.instance()
                 .getMinecraftServerInstance().getPlayerList().getPlayers()) {
             if (matchManager.isInMatch(p.getUniqueID())) {
@@ -69,10 +57,6 @@ public class RankedEventHandler {
             for (ProposedMatch proposal : RankedSystem.queueManager.tick()) {
                 boolean started = matchManager.startMatch(proposal);
                 if (!started) {
-                    // No free arena right now - requeue everyone rather than losing their spot,
-                    // and actually tell them why nothing happened instead of leaving them guessing.
-                    // Re-add the ORIGINAL groups, not flattened individuals, so a party that got
-                    // matched together doesn't get silently split apart by this failure path.
                     for (net.rebornaddon.ranked.queue.QueuedGroup g : proposal.getTeam0Groups()) {
                         RankedSystem.queueManager.joinGroup(proposal.getMode(), g);
                     }
@@ -95,6 +79,8 @@ public class RankedEventHandler {
             }
 
             syncAllPlayers();
+            RankedSystem.seasonManager.reconcilePendingReset(RankedSystem.eloManager);
+            RankedSystem.seasonManager.syncPodium(RankedSystem.eloManager, false);
             checkSeasonExpiry();
             RankedSystem.partyManager.cleanupExpiredInvites();
         }
@@ -103,26 +89,19 @@ public class RankedEventHandler {
     private void checkSeasonExpiry() {
         if (!RankedSystem.seasonManager.isSeasonExpired()) return;
 
-        int endingSeasonNumber = RankedSystem.seasonManager.getSeasonNumber();
-        RankedSystem.seasonManager.endSeasonAndDistribute(
-                RankedSystem.eloManager,
-                this::grantItemOrQueue,
-                uuid -> net.minecraftforge.fml.common.FMLCommonHandler.instance()
-                        .getMinecraftServerInstance().getPlayerList().getPlayerByUUID(uuid) != null,
-                RankedSystem.seasonManager.getSeasonDurationMillis()
-        );
-
-        String msg = net.minecraft.util.text.TextFormatting.GOLD + "Season " + endingSeasonNumber
-                + " has ended! Rewards distributed, ELO reset. Season "
-                + RankedSystem.seasonManager.getSeasonNumber() + " begins now.";
+        net.minecraft.server.MinecraftServer server = net.minecraftforge.fml.common.FMLCommonHandler.instance()
+                .getMinecraftServerInstance();
+        String endingName = RankedSystem.seasonManager.getSeasonDisplayName();
+        String[] response = RankedSystem.seasonManager.endSeason(server, server);
+        if (!net.rebornaddon.ranked.RankedPluginBridge.successful(response)) return;
+        String msg = net.minecraft.util.text.TextFormatting.GOLD + endingName
+                + " has ended. Placement rewards have been recorded and ranked play is paused.";
         for (EntityPlayerMP p : net.minecraftforge.fml.common.FMLCommonHandler.instance()
                 .getMinecraftServerInstance().getPlayerList().getPlayers()) {
             p.sendMessage(new net.minecraft.util.text.TextComponentString(msg));
         }
     }
 
-    /** Same logic as the admin command's manual season-end - kept here too since the
-     *  automatic timer-based end needs it without going through a command sender. */
     private void grantItemOrQueue(UUID uuid, net.minecraft.item.ItemStack item) {
         EntityPlayerMP p = net.minecraftforge.fml.common.FMLCommonHandler.instance()
                 .getMinecraftServerInstance().getPlayerList().getPlayerByUUID(uuid);
@@ -138,7 +117,7 @@ public class RankedEventHandler {
     }
 
     private void syncAllPlayers() {
-        List<PlayerStats> top = RankedSystem.eloManager.getTop(10);
+        List<PlayerStats> top = RankedSystem.seasonManager.visibleTop(RankedSystem.eloManager, 10);
         List<String> names = new ArrayList<>();
         List<Integer> elos = new ArrayList<>();
         for (PlayerStats s : top) {
@@ -178,7 +157,7 @@ public class RankedEventHandler {
             if (pendingInviteFrom == null) pendingInviteFrom = "";
 
             long teleportRemainingMs = RankedSystem.partyManager.getTeleportCooldownRemainingMillis(p.getUniqueID());
-            int teleportCooldownSeconds = (int) ((teleportRemainingMs + 999) / 1000); // round up
+            int teleportCooldownSeconds = (int) ((teleportRemainingMs + 999) / 1000);
 
             List<String> invitablePlayers = new ArrayList<>();
             for (String name : allOnlineNames) {
@@ -189,7 +168,10 @@ public class RankedEventHandler {
 
             RankedNetwork.CHANNEL.sendTo(new RankedSyncMessage(stats.elo, stats.wins, stats.losses,
                     stats.draws, stats.currentWinStreak, stats.peakElo, state, queuedModeNetId,
-                    RankedSystem.seasonManager.getSeasonNumber(), seasonDaysRemaining, names, elos,
+                    RankedSystem.seasonManager.getSeasonNumber(), seasonDaysRemaining,
+                    RankedSystem.seasonManager.getSeasonDisplayName(),
+                    RankedSystem.seasonManager.getState(),
+                    RankedSystem.seasonManager.isLeaderboardEnabled(), names, elos,
                     inParty, isLeader, partyMemberNames, pendingInviteFrom,
                     teleportCooldownSeconds, invitablePlayers), p);
         }
@@ -203,9 +185,6 @@ public class RankedEventHandler {
         if (!RankedSystem.matchManager.isInMatch(uuid)) return;
 
         RankedSystem.matchManager.onPlayerDeath(uuid);
-        // Don't force an instant respawn - let the normal death screen/animation play,
-        // same reasoning as the original plugin. PlayerRespawnEvent below redirects
-        // where they land once they actually respawn.
     }
 
     @SubscribeEvent
@@ -226,9 +205,6 @@ public class RankedEventHandler {
             return;
         }
 
-        // Party friendly-fire prevention - applies everywhere, not just in a ranked
-        // match, since party members are never supposed to end up fighting each other
-        // (matchmaking never splits a party across opposing teams either).
         net.minecraft.entity.Entity attacker = event.getSource().getTrueSource();
         if (attacker instanceof EntityPlayer) {
             UUID attackerUuid = attacker.getUniqueID();
@@ -257,7 +233,6 @@ public class RankedEventHandler {
             p.connection.setPlayerLocation(redirect.x, redirect.y, redirect.z, redirect.yaw, redirect.pitch);
         }
 
-        // Finalize gamemode/inventory next tick, once the respawn has actually completed.
         pendingFinalizeNextTick.add(uuid);
     }
 
@@ -265,6 +240,9 @@ public class RankedEventHandler {
     public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         if (!RankedSystem.isReady()) return;
         UUID uuid = event.player.getUniqueID();
+        if (event.player instanceof EntityPlayerMP) {
+            RankedSystem.matchManager.onSpectatorQuit((EntityPlayerMP) event.player);
+        }
         RankedSystem.queueManager.leaveAll(uuid);
         RankedSystem.matchManager.onPlayerQuit(uuid);
         RankedSystem.partyManager.handleDisconnect(uuid);
@@ -275,6 +253,9 @@ public class RankedEventHandler {
         if (!RankedSystem.isReady()) return;
         if (!(event.player instanceof EntityPlayerMP)) return;
         EntityPlayerMP p = (EntityPlayerMP) event.player;
+        RankedSystem.matchManager.recoverSpectator(p);
+        RankedSystem.partyManager.updateMemberName(p.getUniqueID(), p.getName());
+        RankedSystem.seasonManager.deliverPendingRewards(p);
 
         List<net.minecraft.item.ItemStack> pending = RankedSystem.seasonManager.takePendingRewards(p.getUniqueID());
         if (pending.isEmpty()) return;
@@ -286,7 +267,6 @@ public class RankedEventHandler {
             net.minecraft.item.ItemStack toGive = item.copy();
             p.inventory.addItemStackToInventory(toGive);
             if (!toGive.isEmpty()) {
-                // Still couldn't fit - re-queue rather than lose it.
                 RankedSystem.seasonManager.queuePendingReward(p.getUniqueID(), toGive);
             }
         }

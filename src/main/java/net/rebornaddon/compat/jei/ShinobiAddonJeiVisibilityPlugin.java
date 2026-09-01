@@ -19,7 +19,12 @@ import java.util.List;
 @JEIPlugin
 public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
 
+    private static volatile ShinobiAddonJeiVisibilityPlugin active;
     private IIngredientRegistry ingredientRegistry;
+
+    public ShinobiAddonJeiVisibilityPlugin() {
+        active = this;
+    }
 
     @Override
     public void register(IModRegistry registry) {
@@ -58,6 +63,18 @@ public class ShinobiAddonJeiVisibilityPlugin implements IModPlugin {
 
         if (!restricted.isEmpty()) {
             ingredientRegistry.removeIngredientsAtRuntime(ItemStack.class, restricted);
+        }
+    }
+
+    public static void refreshPolicy() {
+        ShinobiAddonJeiVisibilityPlugin plugin = active;
+        if (plugin == null || plugin.ingredientRegistry == null) return;
+        List<ItemStack> restricted = new ArrayList<ItemStack>();
+        for (ItemStack stack : plugin.ingredientRegistry.getIngredients(ItemStack.class)) {
+            if (ShinobiAddonRestrictionHandler.shouldHide(stack)) restricted.add(stack);
+        }
+        if (!restricted.isEmpty()) {
+            plugin.ingredientRegistry.removeIngredientsAtRuntime(ItemStack.class, restricted);
         }
     }
 

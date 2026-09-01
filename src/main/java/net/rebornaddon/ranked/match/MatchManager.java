@@ -10,12 +10,17 @@ import net.minecraft.util.text.TextFormatting;
 import net.minecraft.world.GameType;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.rebornaddon.ranked.RankedLocation;
+import net.rebornaddon.ranked.RankedSystem;
 import net.rebornaddon.ranked.arena.Arena;
 import net.rebornaddon.ranked.arena.ArenaManager;
 import net.rebornaddon.ranked.elo.EloManager;
 import net.rebornaddon.ranked.elo.PlayerStats;
 import net.rebornaddon.ranked.queue.ProposedMatch;
 import net.rebornaddon.ranked.queue.QueuedPlayer;
+import net.rebornaddon.gameplay.GameplaySystemsService;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import net.minecraft.nbt.NBTTagCompound;
 
 import java.util.*;
 
@@ -32,6 +37,8 @@ public class MatchManager {
     private final Map<UUID, Match> playerToMatch = new HashMap<>();
     private final Map<UUID, Integer> countdownRemaining = new HashMap<>(); // matchId hash -> seconds, tracked per-match below instead
     private final Map<Match, Integer> matchCountdown = new HashMap<>();
+    private final Map<UUID, SpectatorSession> spectators = new HashMap<>();
+    private static final String SPECTATOR_STATE = "RebornRankedSpectator";
 
     // Deferred restore/spectate to apply once a player actually respawns (mirrors the
     // original plugin's approach - never touch a player's position/gamemode while
@@ -109,6 +116,14 @@ public class MatchManager {
 
         broadcastToMatch(match, TextFormatting.GREEN + "Match found! " + match.getMode().getLabel()
                 + " - fight starts in " + startCountdownSeconds + " seconds.");
+        JsonObject evidence = new JsonObject();
+        evidence.addProperty("matchId", match.getMatchId().toString());
+        evidence.addProperty("mode", match.getMode().name());
+        evidence.addProperty("arena", match.getArena().id);
+        evidence.add("teamOne", names(match.getTeam0()));
+        evidence.add("teamTwo", names(match.getTeam1()));
+        GameplaySystemsService.INSTANCE.recordEvent(match.getMatchId().toString(),
+                "ranked.match-started", null, match.getArena().id, evidence.toString());
         return true;
     }
 
@@ -181,6 +196,7 @@ public class MatchManager {
                 }
             }
         }
+        tickSpectators();
     }
 
     /** Call every tick, for every online player currently in a match, to enforce the
@@ -312,6 +328,107 @@ public class MatchManager {
         return true;
     }
 
+    public JsonObject spectatorSnapshot(EntityPlayerMP viewer) {
+        JsonObject root = new JsonObject();
+        root.addProperty("available", true);
+        root.addProperty("title", "Ranked and Exam Spectating");
+        root.addProperty("message", activeMatches.isEmpty()
+                ? "There are no active ranked matches to watch."
+                : "Spectators are isolated from combat and restored when they leave or the match ends.");
+        JsonArray entries = new JsonArray();
+        for (Match match : activeMatches) {
+            if (match.getState() == Match.State.ENDED || match.allPlayers().contains(viewer.getUniqueID())) continue;
+            JsonObject row = new JsonObject();
+            row.addProperty("id", match.getMatchId().toString());
+            row.addProperty("title", match.getMode().getLabel() + " - " + match.getArena().id);
+            row.addProperty("subtitle", teamLabel(match.getTeam0()) + " vs " + teamLabel(match.getTeam1()));
+            row.addProperty("detail", match.getState().name() + " | "
+                    + Math.max(0, match.getTimeRemainingSeconds()) + " seconds remaining");
+            row.addProperty("action", "ranked.spectate");
+            row.addProperty("actionLabel", "Spectate Match");
+            entries.add(row);
+        }
+        if (spectators.containsKey(viewer.getUniqueID())) {
+            JsonObject leave = new JsonObject();
+            leave.addProperty("id", "current");
+            leave.addProperty("title", "Leave current match view");
+            leave.addProperty("subtitle", "Return to your previous location and game mode");
+            leave.addProperty("action", "ranked.leave");
+            leave.addProperty("actionLabel", "Leave Spectating");
+            entries.add(leave);
+        }
+        root.add("entries", entries);
+        return root;
+    }
+
+    public boolean spectate(EntityPlayerMP player, String matchId) {
+        if (player == null || isInMatch(player.getUniqueID())) return false;
+        Match selected = null;
+        for (Match match : activeMatches) {
+            if (match.getMatchId().toString().equals(matchId) && match.getState() != Match.State.ENDED) {
+                selected = match;
+                break;
+            }
+        }
+        if (selected == null) return false;
+        leaveSpectator(player);
+        RankedLocation original = new RankedLocation(player.dimension, player.posX, player.posY,
+                player.posZ, player.rotationYaw, player.rotationPitch);
+        SpectatorSession session = new SpectatorSession(selected, original, player.interactionManager.getGameType());
+        spectators.put(player.getUniqueID(), session);
+        saveSpectatorState(player, session);
+        RankedLocation center = selected.getArena().getCenter();
+        teleport(player, new RankedLocation(center.dimensionId, center.x, center.y + 5.0D, center.z));
+        player.setGameType(GameType.SPECTATOR);
+        player.sendMessage(new TextComponentString(TextFormatting.AQUA
+                + "Now spectating " + selected.getMode().getLabel() + "."));
+        return true;
+    }
+
+    public boolean leaveSpectator(EntityPlayerMP player) {
+        if (player == null) return false;
+        SpectatorSession session = spectators.remove(player.getUniqueID());
+        if (session == null) return false;
+        player.setGameType(session.gameType);
+        teleport(player, session.original);
+        clearSpectatorState(player);
+        return true;
+    }
+
+    public void onSpectatorQuit(EntityPlayerMP player) {
+        leaveSpectator(player);
+    }
+
+    public void recoverSpectator(EntityPlayerMP player) {
+        if (player == null || !persisted(player).hasKey(SPECTATOR_STATE, 10)) return;
+        NBTTagCompound state = persisted(player).getCompoundTag(SPECTATOR_STATE);
+        GameType type = GameType.getByID(state.getInteger("GameType"));
+        player.setGameType(type == GameType.SPECTATOR ? GameType.SURVIVAL : type);
+        teleport(player, new RankedLocation(state.getInteger("Dimension"), state.getDouble("X"),
+                state.getDouble("Y"), state.getDouble("Z"), state.getFloat("Yaw"),
+                state.getFloat("Pitch")));
+        clearSpectatorState(player);
+    }
+
+    private void tickSpectators() {
+        for (Map.Entry<UUID, SpectatorSession> entry : new ArrayList<Map.Entry<UUID, SpectatorSession>>(
+                spectators.entrySet())) {
+            EntityPlayerMP player = getPlayer(entry.getKey());
+            SpectatorSession session = entry.getValue();
+            if (player == null) continue;
+            if (!activeMatches.contains(session.match) || session.match.getState() == Match.State.ENDED) {
+                leaveSpectator(player);
+                continue;
+            }
+            RankedLocation center = session.match.getArena().getCenter();
+            double dx = player.posX - center.x;
+            double dz = player.posZ - center.z;
+            if (player.dimension != center.dimensionId || dx * dx + dz * dz > 16384.0D) {
+                teleport(player, new RankedLocation(center.dimensionId, center.x, center.y + 5.0D, center.z));
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Ending a match
     // ------------------------------------------------------------------
@@ -348,6 +465,12 @@ public class MatchManager {
     private void finishMatch(Match match, double team0Result) {
         if (match.getState() == Match.State.ENDED) return;
         match.setState(Match.State.ENDED);
+        JsonObject evidence = new JsonObject();
+        evidence.addProperty("matchId", match.getMatchId().toString());
+        evidence.addProperty("result", team0Result);
+        evidence.addProperty("remainingSeconds", match.getTimeRemainingSeconds());
+        GameplaySystemsService.INSTANCE.recordEvent(match.getMatchId().toString(),
+                "ranked.match-ended", null, match.getArena().id, evidence.toString());
 
         List<PlayerStats> team0Stats = new ArrayList<>();
         Map<UUID, Integer> beforeElo = new HashMap<>();
@@ -364,6 +487,9 @@ public class MatchManager {
         }
 
         eloManager.applyMatchResult(team0Stats, team1Stats, team0Result);
+        if (RankedSystem.seasonManager != null) {
+            RankedSystem.seasonManager.syncPodium(eloManager, true);
+        }
 
         String resultLabel = team0Result == 0.5 ? TextFormatting.YELLOW + "Draw!" :
                 (team0Result == 1.0 ? TextFormatting.GREEN + "Team 1 wins!" : TextFormatting.GREEN + "Team 2 wins!");
@@ -389,6 +515,13 @@ public class MatchManager {
         match.getArena().inUse = false;
         activeMatches.remove(match);
         matchCountdown.remove(match);
+        for (Map.Entry<UUID, SpectatorSession> entry : new ArrayList<Map.Entry<UUID, SpectatorSession>>(
+                spectators.entrySet())) {
+            if (entry.getValue().match.equals(match)) {
+                EntityPlayerMP spectator = getPlayer(entry.getKey());
+                if (spectator != null) leaveSpectator(spectator);
+            }
+        }
     }
 
     private void announceEloChange(PlayerStats stats, int before) {
@@ -467,5 +600,56 @@ public class MatchManager {
         EntityPlayerMP p = getPlayer(uuid);
         if (p != null) return p.getName();
         return uuid.toString().substring(0, 8); // offline fallback, no profile cache lookup wired up here
+    }
+
+    private JsonArray names(List<UUID> players) {
+        JsonArray names = new JsonArray();
+        for (UUID player : players) names.add(nameOf(player));
+        return names;
+    }
+
+    private String teamLabel(List<UUID> players) {
+        StringBuilder value = new StringBuilder();
+        for (UUID player : players) {
+            if (value.length() > 0) value.append(", ");
+            value.append(nameOf(player));
+        }
+        return value.toString();
+    }
+
+    private static void saveSpectatorState(EntityPlayerMP player, SpectatorSession session) {
+        NBTTagCompound state = new NBTTagCompound();
+        state.setInteger("Dimension", session.original.dimensionId);
+        state.setDouble("X", session.original.x);
+        state.setDouble("Y", session.original.y);
+        state.setDouble("Z", session.original.z);
+        state.setFloat("Yaw", session.original.yaw);
+        state.setFloat("Pitch", session.original.pitch);
+        state.setInteger("GameType", session.gameType.getID());
+        persisted(player).setTag(SPECTATOR_STATE, state);
+    }
+
+    private static void clearSpectatorState(EntityPlayerMP player) {
+        persisted(player).removeTag(SPECTATOR_STATE);
+    }
+
+    private static NBTTagCompound persisted(EntityPlayerMP player) {
+        NBTTagCompound root = player.getEntityData();
+        if (!root.hasKey(EntityPlayerMP.PERSISTED_NBT_TAG, 10)) {
+            root.setTag(EntityPlayerMP.PERSISTED_NBT_TAG, new NBTTagCompound());
+        }
+        return root.getCompoundTag(EntityPlayerMP.PERSISTED_NBT_TAG);
+    }
+
+    private static final class SpectatorSession {
+        private final Match match;
+        private final RankedLocation original;
+        private final GameType gameType;
+
+        private SpectatorSession(Match match, RankedLocation original, GameType gameType) {
+            this.match = match;
+            this.original = original;
+            this.gameType = gameType;
+        }
     }
 }

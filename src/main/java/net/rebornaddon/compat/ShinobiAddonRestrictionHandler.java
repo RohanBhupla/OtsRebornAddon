@@ -29,6 +29,9 @@ import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import net.minecraftforge.oredict.OreDictionary;
+import net.rebornaddon.store.StoreCatalog;
+import net.rebornaddon.policy.ContentPolicyService;
+import net.rebornaddon.policy.PolicyAction;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -270,11 +273,18 @@ public class ShinobiAddonRestrictionHandler {
         if (stack == null || stack.isEmpty()) {
             return false;
         }
-        return shouldRestrict(stack) || isHiddenOnly(stack.getItem());
+        return shouldRestrict(stack) || isHiddenOnly(stack.getItem())
+                || ContentPolicyService.clientDenies(PolicyAction.CREATIVE, stack)
+                || ContentPolicyService.clientDenies(PolicyAction.JEI, stack);
     }
 
     public static boolean shouldHideItem(Item item) {
-        return item != null && (shouldRestrictItem(item) || isHiddenOnly(item));
+        if (item == null) return false;
+        ResourceLocation name = item.getRegistryName();
+        String id = name == null ? "" : name.toString();
+        return shouldRestrictItem(item) || isHiddenOnly(item)
+                || ContentPolicyService.clientDenies(PolicyAction.CREATIVE, id)
+                || ContentPolicyService.clientDenies(PolicyAction.JEI, id);
     }
 
     public static boolean shouldBlockRecipeOutput(ItemStack stack) {
@@ -283,6 +293,8 @@ public class ShinobiAddonRestrictionHandler {
         }
         ResourceLocation name = stack.getItem().getRegistryName();
         return shouldRestrict(stack)
+                || ContentPolicyService.INSTANCE.denies(PolicyAction.CRAFT, stack)
+                || StoreCatalog.isRestrictedCraftingOutput(stack)
                 || name != null && "armourers_workshop".equals(name.getResourceDomain());
     }
 

@@ -27,6 +27,9 @@ public final class RankedClientData {
     private static volatile int queuedModeNetId = -1;
     private static volatile int seasonNumber = 1;
     private static volatile int seasonDaysRemaining = 0;
+    private static volatile String seasonDisplayName = "Season 1";
+    private static volatile String seasonState = "running";
+    private static volatile boolean leaderboardEnabled = true;
     private static volatile List<LeaderboardEntry> leaderboard = new ArrayList<>();
     private static volatile boolean inParty = false;
     private static volatile boolean isPartyLeader = false;
@@ -34,6 +37,7 @@ public final class RankedClientData {
     private static volatile String pendingInviteFrom = "";
     private static volatile int partyTeleportCooldownSeconds = 0;
     private static volatile List<String> invitablePlayers = new ArrayList<>();
+    private static volatile int revision;
 
     public static class LeaderboardEntry {
         public final String playerName;
@@ -56,6 +60,9 @@ public final class RankedClientData {
         queuedModeNetId = msg.getQueuedModeNetId();
         seasonNumber = msg.getSeasonNumber();
         seasonDaysRemaining = msg.getSeasonDaysRemaining();
+        seasonDisplayName = msg.getSeasonDisplayName();
+        seasonState = msg.getSeasonState();
+        leaderboardEnabled = msg.isLeaderboardEnabled();
         inParty = msg.isInParty();
         isPartyLeader = msg.isPartyLeader();
         partyMemberNames = new ArrayList<>(msg.getPartyMemberNames());
@@ -70,6 +77,33 @@ public final class RankedClientData {
             entries.add(new LeaderboardEntry(names.get(i), elos.get(i)));
         }
         leaderboard = entries;
+        revision++;
+    }
+
+    public static int getRevision() { return revision; }
+
+    public static void reset() {
+        elo = 1000;
+        wins = 0;
+        losses = 0;
+        draws = 0;
+        winStreak = 0;
+        peakElo = 1000;
+        matchState = 0;
+        queuedModeNetId = -1;
+        seasonNumber = 1;
+        seasonDaysRemaining = 0;
+        seasonDisplayName = "Season 1";
+        seasonState = "running";
+        leaderboardEnabled = true;
+        leaderboard = new ArrayList<>();
+        inParty = false;
+        isPartyLeader = false;
+        partyMemberNames = new ArrayList<>();
+        pendingInviteFrom = "";
+        partyTeleportCooldownSeconds = 0;
+        invitablePlayers = new ArrayList<>();
+        revision++;
     }
 
     public static int getElo() { return elo; }
@@ -80,6 +114,10 @@ public final class RankedClientData {
     public static int getPeakElo() { return peakElo; }
     public static int getSeasonNumber() { return seasonNumber; }
     public static int getSeasonDaysRemaining() { return seasonDaysRemaining; }
+    public static String getSeasonDisplayName() { return seasonDisplayName; }
+    public static String getSeasonState() { return seasonState; }
+    public static boolean isSeasonRunning() { return "running".equals(seasonState); }
+    public static boolean isLeaderboardEnabled() { return leaderboardEnabled; }
     public static boolean amIInMatch() { return matchState == 2; }
     public static boolean amIQueued() { return matchState == 1; }
 

@@ -92,7 +92,11 @@ public class RankedCommand extends CommandBase {
                 return;
 
             case "top":
-                List<PlayerStats> top = RankedSystem.eloManager.getTop(10);
+                if (!RankedSystem.seasonManager.isLeaderboardEnabled()) {
+                    player.sendMessage(msg(TextFormatting.RED + "The ranked leaderboard is currently hidden."));
+                    return;
+                }
+                List<PlayerStats> top = RankedSystem.seasonManager.visibleTop(RankedSystem.eloManager, 10);
                 player.sendMessage(msg(TextFormatting.GOLD + "=== Ranked Leaderboard ==="));
                 int rank = 1;
                 for (PlayerStats s : top) {
@@ -131,6 +135,11 @@ public class RankedCommand extends CommandBase {
                     player.sendMessage(msg(TextFormatting.RED + "Player '" + args[2] + "' not found (must be online)."));
                     return;
                 }
+                if (isBusy(player.getUniqueID()) || isBusy(target.getUniqueID())) {
+                    player.sendMessage(msg(TextFormatting.RED
+                            + "Players cannot change parties while queued or in a match."));
+                    return;
+                }
                 String error = RankedSystem.partyManager.invite(player.getUniqueID(), player.getName(),
                         target.getUniqueID(), target.getName());
                 if (error != null) {
@@ -144,7 +153,12 @@ public class RankedCommand extends CommandBase {
             }
 
             case "accept": {
-                String inviterName = RankedSystem.partyManager.acceptInvite(player.getUniqueID(), player.getName());
+                if (isBusy(player.getUniqueID())) {
+                    player.sendMessage(msg(TextFormatting.RED + "Leave your queue or match before joining a party."));
+                    return;
+                }
+                String inviterName = RankedSystem.partyManager.acceptInvite(player.getUniqueID(), player.getName(),
+                        id -> server.getPlayerList().getPlayerByUUID(id) != null && !isBusy(id));
                 if (inviterName == null) {
                     player.sendMessage(msg(TextFormatting.RED + "No pending invite (it may have expired)."));
                     return;
@@ -154,6 +168,11 @@ public class RankedCommand extends CommandBase {
             }
 
             case "leave":
+                if (RankedSystem.matchManager.isInMatch(player.getUniqueID())) {
+                    player.sendMessage(msg(TextFormatting.RED + "You cannot leave a party during a match."));
+                    return;
+                }
+                RankedSystem.queueManager.leaveAll(player.getUniqueID());
                 RankedSystem.partyManager.leaveParty(player.getUniqueID());
                 player.sendMessage(msg(TextFormatting.YELLOW + "You left your party."));
                 return;
@@ -164,6 +183,10 @@ public class RankedCommand extends CommandBase {
     }
 
     private void queueFor(MinecraftServer server, EntityPlayerMP player, MatchMode mode) {
+        if (!RankedSystem.seasonManager.isAcceptingMatches()) {
+            player.sendMessage(msg(TextFormatting.RED + "Ranked play is currently paused."));
+            return;
+        }
         UUID uuid = player.getUniqueID();
         if (RankedSystem.matchManager.isInMatch(uuid)) {
             player.sendMessage(msg(TextFormatting.RED + "You're already in a match!"));
@@ -187,8 +210,15 @@ public class RankedCommand extends CommandBase {
             List<Integer> elos = new ArrayList<>();
             for (UUID memberUuid : party.getMemberUuids()) {
                 EntityPlayerMP memberPlayer = server.getPlayerList().getPlayerByUUID(memberUuid);
-                String memberName = memberPlayer != null ? memberPlayer.getName()
-                        : party.getMemberNames().get(party.getMemberUuids().indexOf(memberUuid));
+                if (memberPlayer == null) {
+                    player.sendMessage(msg(TextFormatting.RED + "Every party member must be online to queue."));
+                    return;
+                }
+                if (RankedSystem.matchManager.isInMatch(memberUuid)) {
+                    player.sendMessage(msg(TextFormatting.RED + memberPlayer.getName() + " is already in a match."));
+                    return;
+                }
+                String memberName = memberPlayer.getName();
                 PlayerStats stats = RankedSystem.eloManager.getStats(memberUuid, memberName);
                 uuids.add(memberUuid);
                 names.add(memberName);
@@ -211,5 +241,9 @@ public class RankedCommand extends CommandBase {
 
     private TextComponentString msg(String s) {
         return new TextComponentString(s);
+    }
+
+    private boolean isBusy(UUID id) {
+        return RankedSystem.queueManager.isQueued(id) || RankedSystem.matchManager.isInMatch(id);
     }
 }

@@ -5,14 +5,17 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
+import net.rebornaddon.client.RebornScaledGuiScreen;
 import net.rebornaddon.gui.theme.Theme;
+import net.rebornaddon.gui.theme.GuiChrome;
+import net.rebornaddon.client.ClientLocalization;
 import net.rebornaddon.gui.widgets.ThemedButton;
 
 import java.awt.Desktop;
 import java.io.IOException;
 import java.net.URI;
 
-public class GuiCreatorCredits extends GuiScreen {
+public class GuiCreatorCredits extends RebornScaledGuiScreen {
     private static final String AHZNB_DISCORD = "https://discord.gg/HdFbhPeP";
     private static final String SPRING_DISCORD = "https://discord.gg/MJEcvv8Ftn";
     private static final int BTN_AHZNB = 810;
@@ -26,6 +29,7 @@ public class GuiCreatorCredits extends GuiScreen {
     private int panelY;
     private int panelW;
     private int panelH;
+    private int creditBlockHeight;
 
     @Override
     public void initGui() {
@@ -34,6 +38,7 @@ public class GuiCreatorCredits extends GuiScreen {
         panelH = Math.min(PANEL_MAX_H, height - 16);
         panelX = (width - panelW) / 2;
         panelY = (height - panelH) / 2;
+        creditBlockHeight = Math.max(44, Math.min(66, (panelH - 132) / 2));
         buildButtons();
     }
 
@@ -43,11 +48,14 @@ public class GuiCreatorCredits extends GuiScreen {
         int contentW = panelW - MARGIN * 2;
         int buttonW = Math.min(168, Math.max(118, (contentW - 10) / 2));
         int rowY = panelY + panelH - 42;
-        buttonList.add(new ThemedButton(BTN_AHZNB, panelX + MARGIN, rowY, buttonW, 22, "AHZNB Discord",
+        buttonList.add(new ThemedButton(BTN_AHZNB, panelX + MARGIN, rowY, buttonW, 22,
+                ClientLocalization.format("gui.rebornaddon.credits.ahznb", "AHZNB Discord"),
                 Theme.PARCHMENT_DARK, Theme.TAB_HOVER_BG, Theme.BUTTON_TEXT));
-        buttonList.add(new ThemedButton(BTN_SPRING, panelX + MARGIN + buttonW + 8, rowY, buttonW, 22, "Spring Discord",
+        buttonList.add(new ThemedButton(BTN_SPRING, panelX + MARGIN + buttonW + 8, rowY, buttonW, 22,
+                ClientLocalization.format("gui.rebornaddon.credits.spring", "Spring Discord"),
                 Theme.PARCHMENT_DARK, Theme.TAB_HOVER_BG, Theme.BUTTON_TEXT));
-        buttonList.add(new ThemedButton(BTN_CLOSE, panelX + panelW - MARGIN - 72, panelY + 12, 72, 20, "Close",
+        buttonList.add(new ThemedButton(BTN_CLOSE, panelX + panelW - MARGIN - 72, panelY + 12, 72, 20,
+                ClientLocalization.format("gui.rebornaddon.close", "Close"),
                 Theme.RANKED_RED_DARK, Theme.RANKED_RED, Theme.BUTTON_TEXT));
     }
 
@@ -69,10 +77,10 @@ public class GuiCreatorCredits extends GuiScreen {
     }
 
     @Override
-    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+    protected void drawScaledScreen(int mouseX, int mouseY, float partialTicks) {
         drawDefaultBackground();
         drawPanel();
-        super.drawScreen(mouseX, mouseY, partialTicks);
+        drawScaledControls(mouseX, mouseY, partialTicks);
     }
 
     private void drawPanel() {
@@ -82,11 +90,8 @@ public class GuiCreatorCredits extends GuiScreen {
         int contentLeft = panelX + MARGIN;
         int contentRight = right - MARGIN;
 
-        drawRect(panelX - 6, panelY - 6, right + 6, bottom + 6, 0x99000000);
-        drawRect(panelX, panelY, right, bottom, Theme.GOLD_DARK);
-        drawRect(panelX + 2, panelY + 2, right - 2, bottom - 2, Theme.PANEL_BG);
-        drawRect(panelX + 4, panelY + 4, right - 4, panelY + 54, Theme.PANEL_BG_LIGHT);
-        drawRect(panelX + 4, panelY + 54, right - 4, panelY + 55, Theme.GOLD);
+        GuiChrome.frame(panelX, panelY, panelW, panelH, Theme.GOLD);
+        GuiChrome.header(panelX + 2, panelY + 5, panelW - 4, 50, Theme.GOLD);
 
         fr.drawString("Mod Creator Credits", contentLeft, panelY + 15, Theme.TEXT_LIGHT);
         fr.drawString("Otsutsuki Reborn", contentLeft, panelY + 31, Theme.TEXT_MUTED);
@@ -95,7 +100,7 @@ public class GuiCreatorCredits extends GuiScreen {
         y = drawCreditBlock(fr, contentLeft, contentRight, y, "AHZNB",
                 "Credited for Naruto Add-ons content and original add-on work used by this pack.",
                 AHZNB_DISCORD, Theme.GOLD);
-        y += 14;
+        y += panelH < 270 ? 6 : 14;
         drawCreditBlock(fr, contentLeft, contentRight, y, "Spring",
                 "Credited for modified addon work and the Spring-hosted addon link currently shown by the installed mods.",
                 SPRING_DISCORD, Theme.SUCCESS);
@@ -104,12 +109,13 @@ public class GuiCreatorCredits extends GuiScreen {
     private int drawCreditBlock(FontRenderer fr, int left, int right, int y, String name, String detail,
                                 String url, int accent) {
         int width = right - left;
-        Gui.drawRect(left, y, right, y + 1, Theme.GOLD_DARK);
-        Gui.drawRect(left, y + 10, left + 5, y + 64, accent);
-        fr.drawString(name, left + 12, y + 12, Theme.TEXT_LIGHT);
-        fr.drawSplitString(detail, left + 12, y + 28, width - 20, Theme.TEXT_MUTED);
-        fr.drawString(url, left + 12, y + 52, Theme.GOLD);
-        return y + 68;
+        GuiChrome.section(left, y, width, creditBlockHeight, accent);
+        fr.drawString(name, left + 12, y + 10, Theme.TEXT_LIGHT);
+        fr.drawSplitString(detail, left + 12, y + 23, width - 20, Theme.TEXT_MUTED);
+        if (creditBlockHeight >= 60) {
+            fr.drawString(url, left + 12, y + creditBlockHeight - 14, Theme.GOLD);
+        }
+        return y + creditBlockHeight;
     }
 
     private static void openUrl(String url) {
