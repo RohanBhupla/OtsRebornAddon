@@ -55,7 +55,9 @@ public class RankedAdminCommand extends CommandBase {
             }
 
             if ("season".equals(subcommand)) {
-                return getListOfStringsMatchingLastWord(args, Arrays.asList("info", "end", "setreward"));
+                return getListOfStringsMatchingLastWord(args, Arrays.asList("info", "start", "pause",
+                        "resume", "end", "name", "duration", "leaderboard", "rewarditem",
+                        "rewardcommand", "group", "block", "unblock"));
             }
         }
 
@@ -63,6 +65,22 @@ public class RankedAdminCommand extends CommandBase {
             String subcommand = args[0].toLowerCase();
             if ("addspawn".equals(subcommand) || "clearspawns".equals(subcommand)) {
                 return getListOfStringsMatchingLastWord(args, "0", "1");
+            }
+            if ("season".equals(subcommand)) {
+                if ("leaderboard".equalsIgnoreCase(args[1])) {
+                    return getListOfStringsMatchingLastWord(args, "on", "off");
+                }
+                if ("group".equalsIgnoreCase(args[1])) {
+                    return getListOfStringsMatchingLastWord(args, "1", "2", "3");
+                }
+                if ("rewarditem".equalsIgnoreCase(args[1])
+                        || "rewardcommand".equalsIgnoreCase(args[1])) {
+                    return getListOfStringsMatchingLastWord(args,
+                            "1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+                }
+                if ("block".equalsIgnoreCase(args[1]) || "unblock".equalsIgnoreCase(args[1])) {
+                    return getListOfStringsMatchingLastWord(args, server.getOnlinePlayerNames());
+                }
             }
         }
 
@@ -233,9 +251,14 @@ public class RankedAdminCommand extends CommandBase {
         if (args.length < 2) {
             player.sendMessage(msg(TextFormatting.GOLD + "=== Season Commands ==="));
             player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season info"));
-            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season end  (ends now, distributes rewards, hard-resets ELO, starts next season)"));
-            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season setreward <tierName>  (hold the item first)"));
-            player.sendMessage(msg(TextFormatting.DARK_GRAY + "Tier names: Academy Student, Genin, Chunin, Jonin, Elite Jonin, Kage"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season <start|pause|resume|end>"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season name <name|clear>"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season duration <hours> <minutes> <seconds>"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season leaderboard <on|off>"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season rewarditem <placement>  (hold item)"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season rewardcommand <placement> <command>"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season group <1|2|3> <group|clear>"));
+            player.sendMessage(msg(TextFormatting.GRAY + "/rankedadmin season <block|unblock> <player>"));
             return;
         }
 
@@ -246,45 +269,141 @@ public class RankedAdminCommand extends CommandBase {
                 long days = remainingMs / (24L * 60 * 60 * 1000);
                 long hours = (remainingMs / (60L * 60 * 1000)) % 24;
 
-                player.sendMessage(msg(TextFormatting.GOLD + "=== Season " + sm.getSeasonNumber() + " ==="));
+                player.sendMessage(msg(TextFormatting.GOLD + "=== " + sm.getSeasonDisplayName() + " ==="));
+                player.sendMessage(msg(TextFormatting.GRAY + "State: " + TextFormatting.WHITE + sm.getState()));
                 player.sendMessage(msg(TextFormatting.GRAY + "Time remaining: " + TextFormatting.WHITE + days + "d " + hours + "h"));
-                player.sendMessage(msg(TextFormatting.GRAY + "Configured rewards: " + TextFormatting.WHITE
-                        + (sm.getConfiguredTierNames().isEmpty() ? "none set" : String.join(", ", sm.getConfiguredTierNames().keySet()))));
+                player.sendMessage(msg(TextFormatting.GRAY + "Leaderboard: " + TextFormatting.WHITE
+                        + (sm.isLeaderboardEnabled() ? "enabled" : "disabled")));
                 return;
             }
 
             case "end": {
-                net.rebornaddon.ranked.season.SeasonManager sm = RankedSystem.seasonManager;
-                sm.endSeasonAndDistribute(
-                        RankedSystem.eloManager,
-                        this::grantItemOrQueue,
-                        uuid -> player.getServer().getPlayerList().getPlayerByUUID(uuid) != null,
-                        sm.getSeasonDurationMillis()
-                );
-                player.sendMessage(msg(TextFormatting.GREEN + "Season ended. Rewards distributed, ELO reset, season "
-                        + sm.getSeasonNumber() + " has begun."));
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_LIFECYCLE,
+                        "end", "", ""));
                 return;
             }
-
+            case "start":
+            case "pause":
+            case "resume": {
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_LIFECYCLE,
+                        args[1].toLowerCase(), "", ""));
+                return;
+            }
+            case "name": {
+                if (args.length < 3) {
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season name <name|clear>"));
+                    return;
+                }
+                String value = "clear".equalsIgnoreCase(args[2]) ? "" : join(args, 2);
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_SET_NAME, "", "", value));
+                return;
+            }
+            case "duration": {
+                if (args.length < 5) {
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season duration <hours> <minutes> <seconds>"));
+                    return;
+                }
+                try {
+                    long totalSeconds = Math.max(0L, Long.parseLong(args[2])) * 3600L
+                            + Math.max(0L, Long.parseLong(args[3])) * 60L
+                            + Math.max(0L, Long.parseLong(args[4]));
+                    sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                            net.rebornaddon.ranked.season.SeasonManager.ACTION_SET_DURATION,
+                            "", "", Long.toString(totalSeconds * 1000L)));
+                } catch (NumberFormatException exception) {
+                    player.sendMessage(msg(TextFormatting.RED + "Hours, minutes, and seconds must be whole numbers."));
+                }
+                return;
+            }
+            case "leaderboard": {
+                if (args.length < 3 || !("on".equalsIgnoreCase(args[2]) || "off".equalsIgnoreCase(args[2]))) {
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season leaderboard <on|off>"));
+                    return;
+                }
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_SET_LEADERBOARD,
+                        "", "", Boolean.toString("on".equalsIgnoreCase(args[2]))));
+                return;
+            }
+            case "rewarditem":
             case "setreward": {
                 if (args.length < 3) {
-                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season setreward <tierName>  (hold the item first)"));
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season rewarditem <placement>  (hold item)"));
                     return;
                 }
-                String tierName = args[2];
-                net.minecraft.item.ItemStack held = player.getHeldItemMainhand();
-                if (held == null || held.isEmpty()) {
-                    player.sendMessage(msg(TextFormatting.RED + "Hold the item you want to set as the reward first."));
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_ADD_ITEM,
+                        args[2], "", ""));
+                return;
+            }
+            case "rewardcommand": {
+                if (args.length < 4) {
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season rewardcommand <placement> <command>"));
                     return;
                 }
-                RankedSystem.seasonManager.setReward(tierName, held.copy());
-                player.sendMessage(msg(TextFormatting.GREEN + "Reward for '" + tierName + "' set to your held item."));
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_ADD_COMMAND,
+                        args[2], "", join(args, 3)));
+                return;
+            }
+            case "group": {
+                if (args.length < 4) {
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season group <1|2|3> <group|clear>"));
+                    return;
+                }
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_SET_GROUP,
+                        args[2], "", "clear".equalsIgnoreCase(args[3]) ? "" : args[3]));
+                return;
+            }
+            case "block": {
+                if (args.length < 3) {
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season block <player>"));
+                    return;
+                }
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_BLOCK_PLAYER,
+                        "", "", args[2]));
+                return;
+            }
+            case "unblock": {
+                if (args.length < 3) {
+                    player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season unblock <player>"));
+                    return;
+                }
+                com.mojang.authlib.GameProfile profile = player.getServer().getPlayerProfileCache()
+                        .getGameProfileForUsername(args[2]);
+                if (profile == null || profile.getId() == null) {
+                    player.sendMessage(msg(TextFormatting.RED + "That player has not joined this server before."));
+                    return;
+                }
+                sendSeasonResult(player, RankedSystem.seasonManager.handleAdminAction(player,
+                        net.rebornaddon.ranked.season.SeasonManager.ACTION_UNBLOCK_PLAYER,
+                        profile.getId().toString(), "", ""));
                 return;
             }
 
             default:
-                player.sendMessage(msg(TextFormatting.RED + "Usage: /rankedadmin season <info|end|setreward>"));
+                player.sendMessage(msg(TextFormatting.RED + "Use /rankedadmin season for the available controls."));
         }
+    }
+
+    private void sendSeasonResult(EntityPlayerMP player, String[] response) {
+        boolean success = net.rebornaddon.ranked.RankedPluginBridge.successful(response);
+        player.sendMessage(msg((success ? TextFormatting.GREEN : TextFormatting.RED)
+                + net.rebornaddon.ranked.RankedPluginBridge.message(response)));
+    }
+
+    private static String join(String[] values, int start) {
+        StringBuilder result = new StringBuilder();
+        for (int i = start; i < values.length; i++) {
+            if (result.length() > 0) result.append(' ');
+            result.append(values[i]);
+        }
+        return result.toString();
     }
 
     /** Used as the "online player" branch when distributing season rewards - gives the

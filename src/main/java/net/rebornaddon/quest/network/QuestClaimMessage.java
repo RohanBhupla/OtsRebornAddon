@@ -2,29 +2,30 @@ package net.rebornaddon.quest.network;
 
 import io.netty.buffer.ByteBuf;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraftforge.fml.common.network.ByteBufUtils;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessage;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
 import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
-import net.rebornaddon.quest.CustomNpcQuestService;
+import net.rebornaddon.quest.NativeQuestService;
 
 public class QuestClaimMessage implements IMessage {
-    private int questId;
+    private String questId;
 
     public QuestClaimMessage() {
     }
 
-    public QuestClaimMessage(int questId) {
-        this.questId = questId;
+    public QuestClaimMessage(String questId) {
+        this.questId = questId == null ? "" : questId;
     }
 
     @Override
     public void toBytes(ByteBuf buf) {
-        buf.writeInt(questId);
+        ByteBufUtils.writeUTF8String(buf, questId);
     }
 
     @Override
     public void fromBytes(ByteBuf buf) {
-        questId = buf.readInt();
+        questId = ByteBufUtils.readUTF8String(buf);
     }
 
     public static class Handler implements IMessageHandler<QuestClaimMessage, IMessage> {
@@ -34,7 +35,7 @@ public class QuestClaimMessage implements IMessage {
             player.getServerWorld().addScheduledTask(new Runnable() {
                 @Override
                 public void run() {
-                    CustomNpcQuestService.claim(player, message.questId);
+                    NativeQuestService.claim(player, message.questId);
                 }
             });
             return null;

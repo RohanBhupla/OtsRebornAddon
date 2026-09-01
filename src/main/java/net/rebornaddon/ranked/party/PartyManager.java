@@ -1,12 +1,8 @@
 package net.rebornaddon.ranked.party;
 
 import java.util.*;
+import java.util.function.Predicate;
 
-/**
- * Manages parties and the invite flow. A player with no entry in partyByMember is
- * "solo" - they're never given a party-of-one, that state simply doesn't exist here,
- * which keeps the "am I in a party" check trivial (null = no).
- */
 public class PartyManager {
 
     private static final long INVITE_EXPIRY_MILLIS = 60_000L;
@@ -25,7 +21,6 @@ public class PartyManager {
         }
     }
 
-    // invitee UUID -> the invite waiting for them
     private final Map<UUID, PendingInvite> pendingInvites = new HashMap<>();
 
     private static final long TELEPORT_COOLDOWN_MILLIS = 2 * 60 * 1000L;
@@ -42,7 +37,6 @@ public class PartyManager {
         lastTeleportMillis.put(uuid, System.currentTimeMillis());
     }
 
-    /** Returns null on success, or a player-facing error message on failure. */
     public String kickMember(UUID leaderUuid, UUID targetUuid) {
         Party party = getParty(leaderUuid);
         if (party == null || !party.isLeader(leaderUuid)) {
@@ -61,7 +55,6 @@ public class PartyManager {
         return null;
     }
 
-    /** Returns null on success, or a player-facing error message on failure. */
     public String promoteMember(UUID leaderUuid, UUID targetUuid) {
         Party party = getParty(leaderUuid);
         if (party == null || !party.isLeader(leaderUuid)) {
@@ -91,7 +84,6 @@ public class PartyManager {
         return p != null && p.isLeader(uuid);
     }
 
-    /** Returns null on success, or a player-facing error message on failure. */
     public String invite(UUID inviterUuid, String inviterName, UUID inviteeUuid, String inviteeName) {
         if (inviterUuid.equals(inviteeUuid)) {
             return "You can't invite yourself.";
@@ -114,9 +106,7 @@ public class PartyManager {
         return null;
     }
 
-    /** Returns the inviter's name on success (so the caller can announce it), or null
-     *  if there's no valid pending invite. */
-    public String acceptInvite(UUID inviteeUuid, String inviteeName) {
+    public String acceptInvite(UUID inviteeUuid, String inviteeName, Predicate<UUID> isOnline) {
         PendingInvite invite = pendingInvites.get(inviteeUuid);
         if (invite == null || invite.expiresAt < System.currentTimeMillis()) {
             pendingInvites.remove(inviteeUuid);
@@ -124,13 +114,15 @@ public class PartyManager {
         }
         pendingInvites.remove(inviteeUuid);
 
-        if (isInParty(inviteeUuid)) return null; // joined/created another party in the meantime
+        if (isInParty(inviteeUuid)) return null;
+        if (isOnline == null || !isOnline.test(invite.inviterUuid)) return null;
 
         Party inviterParty = partyByMember.get(invite.inviterUuid);
         if (inviterParty == null) {
-            // Inviter had no party yet - create one now, with them as leader.
             inviterParty = new Party(invite.inviterUuid, invite.inviterName);
             partyByMember.put(invite.inviterUuid, inviterParty);
+        } else if (!inviterParty.isLeader(invite.inviterUuid)) {
+            return null;
         }
 
         if (inviterParty.isFull()) return null;
@@ -146,24 +138,16 @@ public class PartyManager {
         return invite.inviterName;
     }
 
-    /** Removes a player from their party (if any). If the party is left with zero
-     *  members it's discarded entirely; if it still has members, leadership has
-     *  already implicitly passed to the next-oldest member via Party's ordering. */
     public void leaveParty(UUID uuid) {
         Party party = partyByMember.remove(uuid);
         if (party == null) return;
-        boolean nowEmpty = party.removeMember(uuid);
-        if (!nowEmpty) {
-            // Everyone else stays mapped to the same Party object - leadership
-            // read via getLeaderUuid() just naturally reflects the new front-of-list member.
-        }
+        party.removeMember(uuid);
     }
 
-    /** Same handling as leaving cleanly - called on disconnect too, so a dropped
-     *  connection doesn't leave the rest of the party in a broken state. */
     public void handleDisconnect(UUID uuid) {
         leaveParty(uuid);
         pendingInvites.remove(uuid);
+        pendingInvites.entrySet().removeIf(entry -> entry.getValue().inviterUuid.equals(uuid));
         lastTeleportMillis.remove(uuid);
     }
 
@@ -172,9 +156,6 @@ public class PartyManager {
         if (party != null) party.updateMemberName(uuid, currentName);
     }
 
-    /** Call periodically (the existing per-second tick is fine) to clear out invites
-     *  nobody ever responded to, so getPendingInviteFromName doesn't need to check
-     *  expiry defensively everywhere. */
     public void cleanupExpiredInvites() {
         long now = System.currentTimeMillis();
         pendingInvites.entrySet().removeIf(e -> e.getValue().expiresAt < now);

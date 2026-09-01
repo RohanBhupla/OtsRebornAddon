@@ -11,7 +11,11 @@ buildscript {
 apply plugin: 'net.minecraftforge.gradle'
 apply plugin: 'eclipse'
 
-version = "1.0.0"
+repositories {
+    maven { url = 'https://maven.blamejared.com' }
+}
+
+version = "1.0"
 group = "net.rebornaddon"
 archivesBaseName = "RebornAddon"
 
@@ -51,15 +55,18 @@ sourceSets {
     main { output.resourcesDir = output.classesDir }
 }
 
-def otsModsDir = file(System.getenv('OTS_MODS_DIR') ?: 'D:/Mods/Curseforge/minecraft/Instances/Otsutsuki Reborn/mods')
+def otsModsDir = file(System.getenv('OTS_MODS_DIR') ?: 'run/mods')
 
 dependencies {
-    minecraft 'net.minecraftforge:forge:1.12.2-14.23.5.2855'
+    minecraft 'net.minecraftforge:forge:1.12.2-14.23.5.2859'
+    compileOnly fg.deobf('mezz.jei:jei_1.12.2:4.16.1.302:api')
     compileOnly fileTree(dir: otsModsDir, include: ['*.jar'],
             exclude: ['RebornAddon-*.jar', '00-RebornAddon-*.jar'])
+    testImplementation 'junit:junit:4.13.2'
 }
 
 jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     manifest {
         attributes(
                 'FMLCorePlugin': 'net.rebornaddon.asm.RebornAddonLoadingPlugin',
@@ -120,4 +127,27 @@ task verifyRebornLocalization {
     }
 }
 
-check.dependsOn verifyRebornLocalization
+task verifyNativeContentIsolation {
+    inputs.files fileTree('src/main/java') { include '**/*.java' }
+    inputs.files file('src/main/resources/mcmod.info')
+
+    doLast {
+        def violations = []
+        fileTree('src/main/java').matching { include '**/*.java' }.each { source ->
+            def text = source.getText('UTF-8')
+            if (text.contains('import noppes.npcs') || text.contains('D:\\Mods\\')
+                    || text.contains('C:\\Users\\')) {
+                violations.add(source.path)
+            }
+        }
+        def metadata = file('src/main/resources/mcmod.info').getText('UTF-8').toLowerCase()
+        if (metadata.contains('required-after:customnpcs') || metadata.contains('after:customnpcs')) {
+            violations.add('src/main/resources/mcmod.info')
+        }
+        if (!violations.isEmpty()) {
+            throw new GradleException("Native content isolation violations: ${violations.sort().join(', ')}")
+        }
+    }
+}
+
+check.dependsOn verifyRebornLocalization, verifyNativeContentIsolation

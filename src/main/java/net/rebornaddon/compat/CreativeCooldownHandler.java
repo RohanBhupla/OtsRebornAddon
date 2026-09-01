@@ -42,8 +42,8 @@ public final class CreativeCooldownHandler {
                 continue;
             }
 
-            if (player.getCooldownTracker().hasCooldown(stack.getItem())) {
-                player.getCooldownTracker().setCooldown(stack.getItem(), 0);
+            if (CooldownTrackerCompatibility.hasCooldown(player, stack.getItem())) {
+                CooldownTrackerCompatibility.clear(player, stack.getItem());
             }
             NBTTagCompound tag = stack.getTagCompound();
             if (tag == null || tag.hasNoTags()) {

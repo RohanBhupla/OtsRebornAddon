@@ -28,6 +28,9 @@ public class RankedSyncMessage implements IMessage {
     private int queuedModeNetId; // only meaningful when matchState == 1; -1 otherwise
     private int seasonNumber;
     private int seasonDaysRemaining;
+    private String seasonDisplayName = "";
+    private String seasonState = "running";
+    private boolean leaderboardEnabled = true;
     private List<String> leaderboardNames = new ArrayList<>();
     private List<Integer> leaderboardElos = new ArrayList<>();
 
@@ -43,6 +46,7 @@ public class RankedSyncMessage implements IMessage {
 
     public RankedSyncMessage(int elo, int wins, int losses, int draws, int winStreak, int peakElo,
                               int matchState, int queuedModeNetId, int seasonNumber, int seasonDaysRemaining,
+                              String seasonDisplayName, String seasonState, boolean leaderboardEnabled,
                               List<String> leaderboardNames, List<Integer> leaderboardElos,
                               boolean inParty, boolean isPartyLeader, List<String> partyMemberNames,
                               String pendingInviteFrom, int partyTeleportCooldownSeconds,
@@ -57,6 +61,9 @@ public class RankedSyncMessage implements IMessage {
         this.queuedModeNetId = queuedModeNetId;
         this.seasonNumber = seasonNumber;
         this.seasonDaysRemaining = seasonDaysRemaining;
+        this.seasonDisplayName = seasonDisplayName == null ? "" : seasonDisplayName;
+        this.seasonState = seasonState == null ? "running" : seasonState;
+        this.leaderboardEnabled = leaderboardEnabled;
         this.leaderboardNames = leaderboardNames;
         this.leaderboardElos = leaderboardElos;
         this.inParty = inParty;
@@ -79,6 +86,9 @@ public class RankedSyncMessage implements IMessage {
         buf.writeInt(queuedModeNetId);
         buf.writeInt(seasonNumber);
         buf.writeInt(seasonDaysRemaining);
+        ByteBufUtils.writeUTF8String(buf, seasonDisplayName);
+        ByteBufUtils.writeUTF8String(buf, seasonState);
+        buf.writeBoolean(leaderboardEnabled);
         buf.writeInt(leaderboardNames.size());
         for (int i = 0; i < leaderboardNames.size(); i++) {
             ByteBufUtils.writeUTF8String(buf, leaderboardNames.get(i));
@@ -111,6 +121,9 @@ public class RankedSyncMessage implements IMessage {
         queuedModeNetId = buf.readInt();
         seasonNumber = buf.readInt();
         seasonDaysRemaining = buf.readInt();
+        seasonDisplayName = ByteBufUtils.readUTF8String(buf);
+        seasonState = ByteBufUtils.readUTF8String(buf);
+        leaderboardEnabled = buf.readBoolean();
         int count = buf.readInt();
         leaderboardNames = new ArrayList<>();
         leaderboardElos = new ArrayList<>();
@@ -157,6 +170,9 @@ public class RankedSyncMessage implements IMessage {
     public int getQueuedModeNetId() { return queuedModeNetId; }
     public int getSeasonNumber() { return seasonNumber; }
     public int getSeasonDaysRemaining() { return seasonDaysRemaining; }
+    public String getSeasonDisplayName() { return seasonDisplayName; }
+    public String getSeasonState() { return seasonState; }
+    public boolean isLeaderboardEnabled() { return leaderboardEnabled; }
     public List<String> getLeaderboardNames() { return leaderboardNames; }
     public List<Integer> getLeaderboardElos() { return leaderboardElos; }
     public boolean isInParty() { return inParty; }

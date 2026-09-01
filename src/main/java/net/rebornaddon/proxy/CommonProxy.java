@@ -5,32 +5,31 @@ import net.rebornaddon.substitution.SubstitutionEffectMessage;
 import net.rebornaddon.quest.network.QuestSyncMessage;
 import net.rebornaddon.chakra.ChakraMode;
 import net.rebornaddon.chakra.network.ChakraModeEffectMessage;
+import net.rebornaddon.chakra.network.ChakraControlStateMessage;
+import net.rebornaddon.village.network.VillageLeadershipSyncMessage;
+import net.rebornaddon.jutsu.network.JutsuAdminSnapshotMessage;
+import net.rebornaddon.jutsu.network.AdminAccessSyncMessage;
+import net.rebornaddon.store.network.StorePurchaseResultMessage;
+import net.rebornaddon.store.network.StoreCatalogSyncMessage;
+import net.rebornaddon.trade.network.TradeSyncMessage;
+import net.rebornaddon.content.network.NativeContentSyncMessage;
+import net.rebornaddon.exam.network.ExamSyncMessage;
+import net.rebornaddon.performance.network.PerformanceSnapshotMessage;
+import net.rebornaddon.diagnostic.network.CompatibilityRequestMessage;
+import net.minecraft.nbt.NBTTagCompound;
+import net.rebornaddon.content.network.NpcSkinDataMessage;
+import net.rebornaddon.gameplay.network.GameplaySnapshotMessage;
 import net.narutomod.item.ItemNinjaArmor;
 
-/**
- * Server-safe base. This is what actually gets loaded on a dedicated server (or the
- * server side of a combined/singleplayer instance), so it must NEVER reference anything
- * client-only - no GuiScreen, no KeyBinding, no rendering classes at all. Keep this
- * class boring on purpose; all the real GUI logic lives in ClientProxy instead, which
- * is only ever loaded on the physical client via the @SidedProxy lookup in RebornAddonMod.
- */
 public class CommonProxy {
 
     public void preInit() {
-        // Nothing to do server-side - this mod has no server behavior at all.
     }
 
     public void init() {
-        // Nothing to do server-side.
     }
 
-    /** A dedicated server never actually receives this (it's a server->client message),
-     *  but this method needs to exist here - and be genuinely safe to reference from
-     *  anywhere - so RankedSyncMessage.Handler can be registered from common code
-     *  without ever touching a client-only class directly. See ClientProxy's override
-     *  for what actually happens with the data. */
     public void handleRankedSync(RankedSyncMessage message) {
-        // no-op server-side
     }
 
     public void handleSubstitutionEffect(SubstitutionEffectMessage message) {
@@ -39,10 +38,61 @@ public class CommonProxy {
     public void handleQuestSync(QuestSyncMessage message) {
     }
 
+    public void handleVillageLeadershipSync(VillageLeadershipSyncMessage message) {
+    }
+
+    public void handleJutsuAdminSnapshot(JutsuAdminSnapshotMessage message) {
+    }
+
+    public void handleAdminAccessSync(AdminAccessSyncMessage message) {
+    }
+
+    public void handleStorePurchaseResult(StorePurchaseResultMessage message) {
+    }
+
+    public void handleStoreCatalogSync(StoreCatalogSyncMessage message) {
+    }
+
+    public void handleTradeSync(TradeSyncMessage message) {
+    }
+
+    public void handleNativeContentSync(NativeContentSyncMessage message) {
+    }
+
+    public void handleExamSync(ExamSyncMessage message) {
+    }
+
+    public void handlePerformanceSnapshot(PerformanceSnapshotMessage message) {
+    }
+
+    public void handlePerformanceOverlay(boolean enabled) {
+    }
+
+    public void handleGameplaySnapshot(GameplaySnapshotMessage message) {
+    }
+
+    public void handleCompatibilityRequest(CompatibilityRequestMessage message) {
+    }
+
+    public void handleContentPolicySync(NBTTagCompound data) {
+    }
+
+    public void handleNpcSkinData(NpcSkinDataMessage message) {
+    }
+
+    public void openDiscordLinkPrompt(boolean linked) {
+    }
+
+    public void openDiscordLinkCode(String code, String command, String instruction) {
+    }
+
     public void openChakraLearnGui(ChakraMode mode) {
     }
 
     public void handleChakraModeEffect(ChakraModeEffectMessage message) {
+    }
+
+    public void handleChakraControlState(ChakraControlStateMessage message) {
     }
 
     public ItemNinjaArmor.ArmorData createRogueArmorData(ItemNinjaArmor.Type type,

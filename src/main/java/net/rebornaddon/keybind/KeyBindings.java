@@ -9,6 +9,7 @@ import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 import net.rebornaddon.gui.GuiHub;
 import net.rebornaddon.village.network.RebornAddonNetwork;
+import net.rebornaddon.compat.ChakraControlCompatibility;
 import org.lwjgl.input.Keyboard;
 
 /**
@@ -21,12 +22,19 @@ public class KeyBindings {
 
     public static KeyBinding openHub;
     public static KeyBinding substitution;
+    public static KeyBinding discordLink;
+    public static KeyBinding chakraControl;
 
     public static void register() {
         openHub = new KeyBinding("key.rebornaddon.open_hub", Keyboard.KEY_H, "key.categories.rebornaddon");
         substitution = new KeyBinding("key.rebornaddon.substitution", Keyboard.KEY_X, "key.categories.rebornaddon");
+        discordLink = new KeyBinding("key.rebornaddon.discord_link", Keyboard.KEY_NONE, "key.categories.rebornaddon");
+        chakraControl = new KeyBinding("key.rebornaddon.chakra_control", Keyboard.KEY_Z,
+                "key.categories.rebornaddon");
         ClientRegistry.registerKeyBinding(openHub);
         ClientRegistry.registerKeyBinding(substitution);
+        ClientRegistry.registerKeyBinding(discordLink);
+        ClientRegistry.registerKeyBinding(chakraControl);
     }
 
     @SubscribeEvent
@@ -38,6 +46,14 @@ public class KeyBindings {
         }
         if (substitution.isPressed()) {
             RebornAddonNetwork.sendSubstitutionUse();
+        }
+        if (discordLink.isPressed()) {
+            RebornAddonNetwork.requestDiscordLinkPrompt();
+        }
+        if (chakraControl.isPressed() && mc.player != null) {
+            boolean enabled = !ChakraControlCompatibility.isEnabled(mc.player);
+            ChakraControlCompatibility.setEnabled(mc.player, enabled);
+            RebornAddonNetwork.setChakraControl(enabled);
         }
     }
 }

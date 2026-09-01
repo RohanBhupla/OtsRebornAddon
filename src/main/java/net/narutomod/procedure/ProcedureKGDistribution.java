@@ -12,7 +12,6 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundCategory;
 import net.minecraft.util.SoundEvent;
 import net.minecraft.world.World;
-import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
 import net.narutomod.ElementsNarutomodMod;
 import net.narutomod.item.ItemBakuton;
@@ -34,6 +33,7 @@ import net.narutomod.item.ItemShoton;
 import net.narutomod.item.ItemSuiton;
 import net.narutomod.item.ItemYooton;
 import net.rebornaddon.compat.MinecraftAccess;
+import net.rebornaddon.advancement.RebornAdvancementService;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -87,8 +87,7 @@ public class ProcedureKGDistribution extends ElementsNarutomodMod.ModElement {
     }
 
     private static boolean hasAdvancement(EntityPlayerMP player, String name) {
-        Advancement advancement = FMLCommonHandler.instance().getMinecraftServerInstance().getAdvancementManager()
-                .getAdvancement(new ResourceLocation("narutomod", name));
+        Advancement advancement = RebornAdvancementService.INSTANCE.legacyAdvancement(name);
         return advancement != null && player.getAdvancements().getProgress(advancement).isDone();
     }
 
@@ -97,8 +96,7 @@ public class ProcedureKGDistribution extends ElementsNarutomodMod.ModElement {
             return;
         }
 
-        Advancement advancement = FMLCommonHandler.instance().getMinecraftServerInstance().getAdvancementManager()
-                .getAdvancement(new ResourceLocation("narutomod", name));
+        Advancement advancement = RebornAdvancementService.INSTANCE.legacyAdvancement(name);
         if (advancement == null) {
             return;
         }

@@ -18,8 +18,13 @@ public class RebornAddonLoadingPlugin implements IFMLLoadingPlugin {
     public String[] getASMTransformerClass() {
         return new String[] {
                 "net.rebornaddon.asm.JutsuCooldownGuardTransformer",
+                "net.rebornaddon.asm.JutsuRuntimeTransformer",
+                "net.rebornaddon.asm.JutsuIndexSafetyTransformer",
                 "net.rebornaddon.asm.DynamicDojutsuFeatureTransformer",
-                "net.rebornaddon.asm.NarutoModeCompatibilityTransformer"
+                "net.rebornaddon.asm.NarutoModeCompatibilityTransformer",
+                "net.rebornaddon.asm.PlayerStateSafetyTransformer",
+                "net.rebornaddon.asm.AdvancementSafetyTransformer",
+                "net.rebornaddon.asm.ArmorWolfSpawnTransformer"
         };
     }
 

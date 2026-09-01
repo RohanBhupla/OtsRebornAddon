@@ -1,0 +1,15 @@
+{
+  "display": {
+    "background": "minecraft:textures/blocks/diamond_block.png",
+    "icon": {"item": "narutomod:sharinganhelmet"},
+    "title": {"text": "Kekkei Genkai"},
+    "description": {"text": "Discover the bloodlines allowed on this server."},
+    "frame": "goal",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false,
+    "x": 0,
+    "y": 0
+  },
+  "criteria": {"root": {"trigger": "minecraft:impossible"}}
+}

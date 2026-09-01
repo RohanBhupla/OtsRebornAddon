@@ -49,8 +49,19 @@ public class VillageAssignCommand extends CommandBase {
         EntityPlayerMP target = args.length == 2 ? getPlayer(server, sender, args[1]) : getCommandSenderAsPlayer(sender);
         boolean luckPermsAvailable = LuckPermsBridge.INSTANCE.isAvailable(server);
         if ("clear".equalsIgnoreCase(args[0])) {
-            VillageSelectionHandler.INSTANCE.resetSelection(target, luckPermsAvailable, false);
-            sender.sendMessage(new TextComponentString("Cleared the assigned village for " + target.getName() + "."));
+            VillageSelectionHandler.INSTANCE.resetSelection(target, false, false);
+            if (!luckPermsAvailable) {
+                sender.sendMessage(new TextComponentString("Cleared the local village for " + target.getName() + "."));
+                return;
+            }
+            LuckPermsBridge.INSTANCE.clearVillageAsync(target, new LuckPermsBridge.ChangeCallback() {
+                @Override
+                public void onComplete(boolean success) {
+                    sender.sendMessage(new TextComponentString(success
+                            ? "Cleared the assigned village for " + target.getName() + "."
+                            : "Cleared the local village, but LuckPerms could not be updated."));
+                }
+            });
             return;
         }
 
@@ -59,13 +70,23 @@ public class VillageAssignCommand extends CommandBase {
             throw new WrongUsageException(getUsage(sender));
         }
 
-        VillageSelectionHandler.INSTANCE.assignLocalVillage(target, village);
-        boolean luckPermsUpdated = !luckPermsAvailable || LuckPermsBridge.INSTANCE.applyVillage(target, village);
-        String suffix = luckPermsAvailable
-                ? (luckPermsUpdated ? " LuckPerms was updated." : " Local assignment saved; LuckPerms update failed.")
-                : " Local assignment saved without LuckPerms.";
-        sender.sendMessage(new TextComponentString("Assigned " + target.getName() + " to "
-                + village.displayName() + "." + suffix));
+        if (!luckPermsAvailable) {
+            VillageSelectionHandler.INSTANCE.assignLocalVillage(target, village);
+            sender.sendMessage(new TextComponentString("Assigned " + target.getName() + " to "
+                    + village.displayName() + " locally; LuckPerms is not available."));
+            return;
+        }
+        LuckPermsBridge.INSTANCE.applyVillageAsync(target, village, new LuckPermsBridge.ChangeCallback() {
+            @Override
+            public void onComplete(boolean success) {
+                if (success) {
+                    VillageSelectionHandler.INSTANCE.assignLocalVillage(target, village);
+                }
+                sender.sendMessage(new TextComponentString(success
+                        ? "Assigned " + target.getName() + " to " + village.displayName() + "."
+                        : "LuckPerms could not save the village assignment."));
+            }
+        });
     }
 
     @Override

@@ -1,0 +1,15 @@
+{
+  "display": {
+    "background": "minecraft:textures/blocks/iron_block.png",
+    "icon": {"item": "narutomod:hiramekarei_sword"},
+    "title": {"text": "Store"},
+    "description": {"text": "Collect the seven legendary swords of the Mist."},
+    "frame": "goal",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false,
+    "x": 0,
+    "y": 0
+  },
+  "criteria": {"root": {"trigger": "minecraft:impossible"}}
+}

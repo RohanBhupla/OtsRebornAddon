@@ -1,0 +1,31 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "wood": "minecraft:blocks/planks_spruce",
+    "metal": "minecraft:blocks/iron_block",
+    "flag": "minecraft:blocks/wool_colored_red",
+    "particle": "minecraft:blocks/planks_spruce"
+  },
+  "elements": [
+    { "from": [6, 0, 6], "to": [10, 8, 10], "faces": {
+      "north": {"texture": "#wood"}, "south": {"texture": "#wood"},
+      "east": {"texture": "#wood"}, "west": {"texture": "#wood"},
+      "up": {"texture": "#wood"}, "down": {"texture": "#wood"}
+    }},
+    { "from": [2, 7, 3], "to": [14, 14, 13], "faces": {
+      "north": {"texture": "#wood"}, "south": {"texture": "#wood"},
+      "east": {"texture": "#wood"}, "west": {"texture": "#wood"},
+      "up": {"texture": "#metal"}, "down": {"texture": "#wood"}
+    }},
+    { "from": [4, 9, 2.75], "to": [12, 12, 3], "faces": {
+      "north": {"texture": "#metal"}, "south": {"texture": "#metal"},
+      "east": {"texture": "#metal"}, "west": {"texture": "#metal"},
+      "up": {"texture": "#metal"}, "down": {"texture": "#metal"}
+    }},
+    { "from": [13.5, 10, 7], "to": [15, 16, 8], "faces": {
+      "north": {"texture": "#flag"}, "south": {"texture": "#flag"},
+      "east": {"texture": "#flag"}, "west": {"texture": "#flag"},
+      "up": {"texture": "#flag"}, "down": {"texture": "#flag"}
+    }}
+  ]
+}
