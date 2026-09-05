@@ -39,7 +39,7 @@ import java.util.Locale;
 import java.util.Map;
 
 public final class AdminTab implements HubTab {
-    private static final int SECTION_BASE = 900;
+    private static final int SECTION_BASE = 6000;
     private static final int PREVIOUS_PAGE = 910;
     private static final int NEXT_PAGE = 911;
     private static final int PROPERTY = 912;
@@ -56,11 +56,11 @@ public final class AdminTab implements HubTab {
     private static final int QUOTA_RESET = 923;
     private static final int QUEST_ACTION = 924;
     private static final int QUEST_APPLY = 925;
-    private static final int JUTSU_PROPERTY_BASE = 930;
+    private static final int JUTSU_PROPERTY_BASE = 6100;
     private static final int JUTSU_SCOPE = 940;
     private static final int JUTSU_CATEGORY = 941;
     private static final int OPEN_EFFECT_RULES = 942;
-    private static final int MODE_PROPERTY_BASE = 950;
+    private static final int MODE_PROPERTY_BASE = 6200;
     private static final int OPEN_MODE_COMBINATIONS = 990;
     private static final int RANKED_VIEW_BASE = 960;
     private static final int RANKED_START = 963;
@@ -103,7 +103,7 @@ public final class AdminTab implements HubTab {
     private static final int ROW_BASE = 1000;
     private static final String[] TAB_IDS = {"jutsus", "store", "sections", "limits", "quests",
             "modes", "ranked", "ranks", "cooldowns", "performance", "moderation",
-            "chakra-control", "mounts"};
+            "chakra-control", "mounts", "luckperms"};
     private static final String[] CHAKRA_SETTING_IDS = {
             ChakraControlConfigurationService.ENABLED,
             ChakraControlConfigurationService.WATER_WALKING_ENABLED,
@@ -121,6 +121,7 @@ public final class AdminTab implements HubTab {
     private final List<ModeEntry> modes = new ArrayList<ModeEntry>();
     private final ModerationAdminPanel moderation = new ModerationAdminPanel();
     private final MountAdminPanel mounts = new MountAdminPanel();
+    private final LuckPermsAdminPanel luckPerms = new LuckPermsAdminPanel();
     private GuiTextField searchField;
     private GuiTextField valueField;
     private GuiTextField playerField;
@@ -200,7 +201,7 @@ public final class AdminTab implements HubTab {
         this.top = top;
         this.width = width;
         this.height = height;
-        if (selected != 7 && selected != 9 && selected != 10 && selected != 12) {
+        if (selected != 7 && selected != 9 && selected != 10 && selected != 12 && selected != 13) {
             syncSnapshot();
             requestSnapshot(true);
         }
@@ -225,6 +226,10 @@ public final class AdminTab implements HubTab {
             mounts.build(buttons, left, bodyTop, leftWidth, rightX, rightWidth, top + height);
             return;
         }
+        if (selected == 13) {
+            luckPerms.build(buttons, left, bodyTop, leftWidth, rightX, rightWidth, top + height);
+            return;
+        }
         if (!ClientAdminData.loaded()) return;
         if (selected == 0) buildJutsuButtons(buttons);
         else if (selected == 1) buildStoreButtons(buttons);
@@ -241,7 +246,7 @@ public final class AdminTab implements HubTab {
     public void drawContent(GuiScreen screen, int left, int top, int width, int height,
                             int mouseX, int mouseY) {
         FontRenderer font = Minecraft.getMinecraft().fontRenderer;
-        if (selected != 7 && selected != 9 && selected != 10 && selected != 12
+        if (selected != 7 && selected != 9 && selected != 10 && selected != 12 && selected != 13
                 && !ClientAdminData.loaded()) {
             GuiChrome.header(left, bodyTop, width, 38, Theme.RANKED_RED);
             font.drawString(text("gui.rebornaddon.admin.loading", "Loading server controls..."),
@@ -252,7 +257,9 @@ public final class AdminTab implements HubTab {
         int bodyHeight = Math.max(80, top + height - bodyTop);
         GuiChrome.section(left, bodyTop, leftWidth, bodyHeight, accent);
         GuiChrome.section(rightX, bodyTop, rightWidth, bodyHeight, accent);
-        if (selected != 10 && selected != 11 && selected != 12) drawNotice(font, accent);
+        if (selected != 9 && selected != 10 && selected != 11 && selected != 12 && selected != 13) {
+            drawNotice(font, accent);
+        }
         if (selected == 3) drawLimits(font, accent);
         else if (selected == 4) drawQuests(font, accent);
         else if (selected == 6) drawRanked(font, accent);
@@ -262,6 +269,7 @@ public final class AdminTab implements HubTab {
         else if (selected == 10) moderation.draw(font);
         else if (selected == 11) drawChakraControl(font, accent);
         else if (selected == 12) mounts.draw(font);
+        else if (selected == 13) luckPerms.draw(font);
         else {
             font.drawString(selected == 5
                             ? text("gui.rebornaddon.admin.search_modes", "Search modes")
@@ -280,7 +288,7 @@ public final class AdminTab implements HubTab {
 
     @Override
     public boolean handleButtonClick(int buttonId) {
-        if (buttonId >= SECTION_BASE && buttonId < SECTION_BASE + TAB_IDS.length) {
+        if (isSectionButtonId(buttonId)) {
             int next = buttonId - SECTION_BASE;
             if (next != selected && usesAdminSnapshot(next)) ClientAdminData.invalidate();
             selected = next;
@@ -314,7 +322,12 @@ public final class AdminTab implements HubTab {
         if (selected == 10) return moderation.handleButton(buttonId);
         if (selected == 11) return handleChakraControlButton(buttonId);
         if (selected == 12) return mounts.handleButton(buttonId);
+        if (selected == 13) return luckPerms.handleButton(buttonId);
         return handleCooldownButton(buttonId);
+    }
+
+    static boolean isSectionButtonId(int buttonId) {
+        return buttonId >= SECTION_BASE && buttonId < SECTION_BASE + TAB_IDS.length;
     }
 
     @Override
@@ -323,6 +336,8 @@ public final class AdminTab implements HubTab {
             moderation.keyTyped(typedChar, keyCode);
         } else if (selected == 12) {
             mounts.keyTyped(typedChar, keyCode);
+        } else if (selected == 13) {
+            luckPerms.keyTyped(typedChar, keyCode);
         } else if (selected == 11) {
             if (chakraSettingIndex == 3 && valueField != null) {
                 valueField.textboxKeyTyped(typedChar, keyCode);
@@ -367,6 +382,8 @@ public final class AdminTab implements HubTab {
             moderation.mouseClicked(mouseX, mouseY, mouseButton);
         } else if (selected == 12) {
             mounts.mouseClicked(mouseX, mouseY, mouseButton);
+        } else if (selected == 13) {
+            luckPerms.mouseClicked(mouseX, mouseY, mouseButton);
         } else if (selected == 11) {
             if (chakraSettingIndex == 3 && valueField != null) {
                 valueField.mouseClicked(mouseX, mouseY, mouseButton);
@@ -425,6 +442,8 @@ public final class AdminTab implements HubTab {
             if (moderation.tick()) refreshButtons = true;
         } else if (selected == 12) {
             if (mounts.tick()) refreshButtons = true;
+        } else if (selected == 13) {
+            if (luckPerms.tick()) refreshButtons = true;
         } else if (selected == 7) {
             requestRankCatalog(false);
         } else if (selected == 9) {
@@ -1246,8 +1265,8 @@ public final class AdminTab implements HubTab {
             rankedBlockedSelection = -1;
             return true;
         }
-        if (id >= RANKED_BLOCKED_BASE) {
-            int rows = Math.max(1, (top + height - 25 - (bodyTop + 105)) / 22);
+        int rows = Math.max(1, (top + height - 25 - (bodyTop + 105)) / 22);
+        if (id >= RANKED_BLOCKED_BASE && id < RANKED_BLOCKED_BASE + rows) {
             rankedBlockedSelection = rankedBlockedPage * rows + id - RANKED_BLOCKED_BASE;
             return true;
         }
@@ -1887,7 +1906,7 @@ public final class AdminTab implements HubTab {
     }
 
     private static boolean usesAdminSnapshot(int tab) {
-        return tab != 7 && tab != 9 && tab != 10 && tab != 12;
+        return tab != 7 && tab != 9 && tab != 10 && tab != 12 && tab != 13;
     }
 
     private static void requestPerformance(boolean force) {
@@ -2246,10 +2265,10 @@ public final class AdminTab implements HubTab {
                 "gui.rebornaddon.admin.ranked", "gui.rebornaddon.admin.ranks",
                 "gui.rebornaddon.admin.cooldowns", "gui.rebornaddon.admin.performance",
                 "gui.rebornaddon.admin.moderation", "gui.rebornaddon.admin.chakra_control",
-                "gui.rebornaddon.admin.mounts"};
+                "gui.rebornaddon.admin.mounts", "gui.rebornaddon.admin.luckperms"};
         String[] fallback = {"Jutsus", "Store", "Sections", "Limits", "Quests", "Modes",
                 "Ranked", "Ranks", "Cooldowns", "Performance", "Moderation", "Chakra Control",
-                "Mounts"};
+                "Mounts", "LuckPerms"};
         return text(keys[index], fallback[index]);
     }
 
@@ -2438,7 +2457,8 @@ public final class AdminTab implements HubTab {
                 : index == 4 ? Theme.SUCCESS : index == 5 ? Theme.PURPLE_LIGHT
                 : index == 6 ? Theme.RANKED_RED : index == 7 ? Theme.GOLD
                 : index == 8 ? Theme.TEAL : index == 9 ? Theme.SUCCESS
-                : index == 11 ? Theme.TEAL : index == 12 ? Theme.GOLD : Theme.RANKED_RED;
+                : index == 11 ? Theme.TEAL : index == 12 ? Theme.GOLD
+                : index == 13 ? Theme.TEAL : Theme.RANKED_RED;
     }
 
     private static JsonArray examRanks() {

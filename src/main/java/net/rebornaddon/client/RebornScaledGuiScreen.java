@@ -17,13 +17,21 @@ public abstract class RebornScaledGuiScreen extends GuiScreen {
     @Override
     public void setWorldAndResolution(Minecraft minecraft, int screenWidth, int screenHeight) {
         float requested = RebornGuiScale.getScale();
-        float widthLimit = screenWidth / (float) MIN_LAYOUT_WIDTH;
-        float heightLimit = screenHeight / (float) MIN_LAYOUT_HEIGHT;
+        float widthLimit = screenWidth / (float) minimumLayoutWidth();
+        float heightLimit = screenHeight / (float) minimumLayoutHeight();
         effectiveScale = Math.max(0.1F, Math.min(requested, Math.min(widthLimit, heightLimit)));
 
         int virtualWidth = Math.max(1, MathHelper.ceil(screenWidth / effectiveScale));
         int virtualHeight = Math.max(1, MathHelper.ceil(screenHeight / effectiveScale));
         super.setWorldAndResolution(minecraft, virtualWidth, virtualHeight);
+    }
+
+    protected int minimumLayoutWidth() {
+        return MIN_LAYOUT_WIDTH;
+    }
+
+    protected int minimumLayoutHeight() {
+        return MIN_LAYOUT_HEIGHT;
     }
 
     @Override

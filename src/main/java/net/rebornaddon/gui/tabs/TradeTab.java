@@ -267,11 +267,12 @@ public final class TradeTab implements HubTab {
             RebornAddonNetwork.sendTradeAction(TradeService.READY, null, -1, 0);
         } else if (buttonId == PREVIOUS || buttonId == NEXT) {
             page += buttonId == PREVIOUS ? -1 : 1;
-        } else if (buttonId >= PLAYER_BASE) {
+        } else {
             int rows = Math.max(3, (height - 112) / 25);
+            if (buttonId < PLAYER_BASE || buttonId >= PLAYER_BASE + rows) return false;
             int index = page * rows + buttonId - PLAYER_BASE;
             if (index >= 0 && index < players.size()) selectedPlayer = index;
-        } else return false;
+        }
         return true;
     }
 

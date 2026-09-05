@@ -158,8 +158,8 @@ public final class ShinobiTab implements HubTab {
 
     @Override
     public void onTick() {
-        if (revision != ClientGameplayData.revision()) {
-            revision = ClientGameplayData.revision();
+        if (revision != ClientGameplayData.revision(SECTIONS[selected])) {
+            revision = ClientGameplayData.revision(SECTIONS[selected]);
             refresh = true;
         }
         request(false);

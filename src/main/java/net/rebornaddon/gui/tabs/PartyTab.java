@@ -25,6 +25,7 @@ public final class PartyTab implements HubTab {
     private static final int KICK_BASE = 530;
     private static final int PROMOTE_BASE = 540;
     private static final int MAX_CANDIDATES = 4;
+    private static final int MEMBER_ACTION_ID_CAPACITY = 10;
     private static final int COLUMN_GAP = 10;
 
     private GuiTextField inviteField;
@@ -154,15 +155,15 @@ public final class PartyTab implements HubTab {
             }
             return true;
         }
-        if (buttonId >= TELEPORT_BASE && buttonId < TELEPORT_BASE + 3) {
+        if (buttonId >= TELEPORT_BASE && buttonId < TELEPORT_BASE + MEMBER_ACTION_ID_CAPACITY) {
             return memberAction(buttonId - TELEPORT_BASE, QueueActionMessage.ACTION_PARTY_TELEPORT,
                     "gui.rebornaddon.party.status.teleporting", "Teleporting to %s");
         }
-        if (buttonId >= KICK_BASE && buttonId < KICK_BASE + 3) {
+        if (buttonId >= KICK_BASE && buttonId < KICK_BASE + MEMBER_ACTION_ID_CAPACITY) {
             return memberAction(buttonId - KICK_BASE, QueueActionMessage.ACTION_PARTY_KICK,
                     "gui.rebornaddon.party.status.removing", "Removing %s");
         }
-        if (buttonId >= PROMOTE_BASE && buttonId < PROMOTE_BASE + 3) {
+        if (buttonId >= PROMOTE_BASE && buttonId < PROMOTE_BASE + MEMBER_ACTION_ID_CAPACITY) {
             return memberAction(buttonId - PROMOTE_BASE, QueueActionMessage.ACTION_PARTY_PROMOTE,
                     "gui.rebornaddon.party.status.promoting", "Promoting %s");
         }

@@ -73,6 +73,42 @@ public class InstalledArmorWolfSpawnTransformerAuditTest {
         assertTrue("Armor Wolf spawn results are still discarded", spawnHooks > 0);
     }
 
+    @Test
+    public void patchesInstalledClientWolfFallback() throws Exception {
+        String configured = System.getenv("REBORNADDON_TEST_ARMOR_WOLF_CLIENT_JAR");
+        Assume.assumeTrue(configured != null && !configured.trim().isEmpty());
+        File file = new File(configured);
+        Assume.assumeTrue(file.isFile());
+
+        byte[] original;
+        ZipFile jar = new ZipFile(file);
+        try {
+            ZipEntry entry = jar.getEntry(
+                    "com/armourwolfmod/client/render/RenderCompanionWolf.class");
+            Assume.assumeTrue(entry != null);
+            original = read(jar.getInputStream(entry));
+        } finally {
+            jar.close();
+        }
+
+        byte[] transformed = new ArmorWolfSpawnTransformer().transform(
+                "com.armourwolfmod.client.render.RenderCompanionWolf",
+                "com.armourwolfmod.client.render.RenderCompanionWolf", original);
+        ClassNode node = new ClassNode();
+        new ClassReader(transformed).accept(node, 0);
+        int hooks = 0;
+        for (MethodNode method : node.methods) {
+            for (AbstractInsnNode instruction = method.instructions.getFirst();
+                 instruction != null; instruction = instruction.getNext()) {
+                if (!(instruction instanceof MethodInsnNode)) continue;
+                MethodInsnNode call = (MethodInsnNode) instruction;
+                if ("net/rebornaddon/mount/client/ArmorWolfRenderDiagnostics".equals(call.owner)
+                        && "recordFallback".equals(call.name)) hooks++;
+            }
+        }
+        assertTrue("Armor Wolf's client wolf fallback was not instrumented", hooks > 0);
+    }
+
     private static boolean hasHook(MethodNode method, String name) {
         for (AbstractInsnNode instruction = method.instructions.getFirst();
              instruction != null; instruction = instruction.getNext()) {

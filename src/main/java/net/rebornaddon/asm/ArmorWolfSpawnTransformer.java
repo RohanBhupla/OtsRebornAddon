@@ -15,11 +15,14 @@ import org.objectweb.asm.tree.VarInsnNode;
 public final class ArmorWolfSpawnTransformer implements IClassTransformer {
     private static final String WRAPPER = "com.armourwolfmod.entity.EntitySkinWolf";
     private static final String HANDLER = "com.armourwolfmod.event.CompanionKeybindHandler";
+    private static final String RENDERER = "com.armourwolfmod.client.render.RenderCompanionWolf";
     private static final String BUKKIT_LISTENER = "org.bukkit.plugin.RegisteredListener";
     private static final String FORGE_LISTENER =
             "net.minecraftforge.fml.common.eventhandler.ASMEventHandler";
     private static final String WRAPPER_INTERNAL = WRAPPER.replace('.', '/');
     private static final String HOOK = "net/rebornaddon/mount/ArmorWolfCompatibilityHandler";
+    private static final String RENDER_HOOK =
+            "net/rebornaddon/mount/client/ArmorWolfRenderDiagnostics";
 
     @Override
     public byte[] transform(String name, String transformedName, byte[] basicClass) {
@@ -27,10 +30,13 @@ public final class ArmorWolfSpawnTransformer implements IClassTransformer {
         String className = transformedName == null ? name : transformedName;
         boolean wrapper = WRAPPER.equals(className) || WRAPPER.equals(name);
         boolean handler = HANDLER.equals(className) || HANDLER.equals(name);
+        boolean renderer = RENDERER.equals(className) || RENDERER.equals(name);
         boolean bukkitListener = BUKKIT_LISTENER.equals(className)
                 || BUKKIT_LISTENER.equals(name);
         boolean forgeListener = FORGE_LISTENER.equals(className) || FORGE_LISTENER.equals(name);
-        if (!wrapper && !handler && !bukkitListener && !forgeListener) return basicClass;
+        if (!wrapper && !handler && !renderer && !bukkitListener && !forgeListener) {
+            return basicClass;
+        }
         try {
             ClassNode node = new ClassNode();
             new ClassReader(basicClass).accept(node, 0);
@@ -38,9 +44,20 @@ public final class ArmorWolfSpawnTransformer implements IClassTransformer {
             int ownerGuards = 0;
             int removalHooks = 0;
             int spawnCalls = 0;
+            int rendererFallbacks = 0;
             int bukkitListenerMethods = 0;
             int forgeListenerMethods = 0;
             for (MethodNode method : node.methods) {
+                if (renderer && isRendererFallback(method)) {
+                    InsnList diagnostic = new InsnList();
+                    diagnostic.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                    diagnostic.add(new VarInsnNode(Opcodes.ALOAD, 1));
+                    diagnostic.add(new MethodInsnNode(Opcodes.INVOKESTATIC, RENDER_HOOK,
+                            "recordFallback",
+                            "(Ljava/lang/Object;Lnet/minecraft/entity/Entity;)V", false));
+                    method.instructions.insert(diagnostic);
+                    rendererFallbacks++;
+                }
                 if (bukkitListener && isBukkitCallEvent(method)) {
                     InsnList begin = new InsnList();
                     begin.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -137,6 +154,9 @@ public final class ArmorWolfSpawnTransformer implements IClassTransformer {
             if (handler && spawnCalls == 0) {
                 return basicClass;
             }
+            if (renderer && rendererFallbacks == 0) {
+                return basicClass;
+            }
             if (bukkitListener && bukkitListenerMethods == 0) {
                 return basicClass;
             }
@@ -187,5 +207,11 @@ public final class ArmorWolfSpawnTransformer implements IClassTransformer {
     private static boolean isForgeInvoke(MethodNode method) {
         return "invoke".equals(method.name)
                 && "(Lnet/minecraftforge/fml/common/eventhandler/Event;)V".equals(method.desc);
+    }
+
+    private static boolean isRendererFallback(MethodNode method) {
+        return "renderWithFallback".equals(method.name)
+                && ("(Lcom/armourwolfmod/entity/EntitySkinWolf;DDDFFF)V".equals(method.desc)
+                || "(Lnet/minecraft/entity/Entity;DDDFFF)V".equals(method.desc));
     }
 }

@@ -44,6 +44,12 @@ public final class NarutoModeCompatibilityTransformer implements IClassTransform
     private static final String MOKUTON_ITEM = "net.narutomod.item.ItemMokuton$ItemCustom";
     private static final String BASIC_NINJA_SKILLS =
             "net.narutomod.procedure.ProcedureBasicNinjaSkills";
+    static final String PLAYER_NINJA_SKILL_TICK =
+            "net.narutomod.procedure.ProcedureOnPlayerPostTick";
+    static final String CHAKRA_PLAYER_HOOK =
+            "net.narutomod.Chakra$PathwayPlayer$PlayerHook";
+    static final String NINJA_ACCESS_HELPER =
+            "net/rebornaddon/compat/NarutoAddonAdvancementCompatibility";
     private static final String SENJUTSU_UPDATE_DESC =
             "(Lnet/minecraft/item/ItemStack;Lnet/minecraft/world/World;"
                     + "Lnet/minecraft/entity/Entity;IZ)V";
@@ -120,6 +126,8 @@ public final class NarutoModeCompatibilityTransformer implements IClassTransform
                 && !SENJUTSU_OUTER.equals(className)
                 && !MOKUTON_ITEM.equals(className)
                 && !BASIC_NINJA_SKILLS.equals(className)
+                && !PLAYER_NINJA_SKILL_TICK.equals(className)
+                && !CHAKRA_PLAYER_HOOK.equals(className)
                 && !ADDON_SUSANOO_BASE.equals(className)
                 && formUuids == null) {
             return basicClass;
@@ -131,6 +139,11 @@ public final class NarutoModeCompatibilityTransformer implements IClassTransform
             boolean changed = false;
 
             for (MethodNode method : classNode.methods) {
+                if (PLAYER_NINJA_SKILL_TICK.equals(className)
+                        || CHAKRA_PLAYER_HOOK.equals(className)) {
+                    changed |= replaceNinjaLevelGate(method,
+                            PLAYER_NINJA_SKILL_TICK.equals(className));
+                }
                 if (ADDON_SUSANOO_BASE.equals(className) && "<clinit>".equals(method.name)) {
                     changed |= correctAddonSusanooDataOwner(method);
                 }
@@ -304,6 +317,43 @@ public final class NarutoModeCompatibilityTransformer implements IClassTransform
         method.maxLocals = argumentSlots(method);
     }
 
+    private boolean replaceNinjaLevelGate(MethodNode method, boolean everyLevelRead) {
+        boolean changed = false;
+        AbstractInsnNode instruction = method.instructions.getFirst();
+        while (instruction != null) {
+            AbstractInsnNode next = instruction.getNext();
+            if (!(instruction instanceof FieldInsnNode)) {
+                instruction = next;
+                continue;
+            }
+            FieldInsnNode field = (FieldInsnNode) instruction;
+            if (field.getOpcode() != Opcodes.GETFIELD
+                    || !"net/minecraft/entity/player/EntityPlayer".equals(field.owner)
+                    || !("field_71068_ca".equals(field.name)
+                    || "experienceLevel".equals(field.name))
+                    || !"I".equals(field.desc)) {
+                instruction = next;
+                continue;
+            }
+            if (!everyLevelRead && !isLevelTenComparison(nextExecutable(field.getNext()))) {
+                instruction = next;
+                continue;
+            }
+            method.instructions.set(field, new MethodInsnNode(Opcodes.INVOKESTATIC,
+                    NINJA_ACCESS_HELPER, "ninjaAccessLevel",
+                    "(Lnet/minecraft/entity/player/EntityPlayer;)I", false));
+            changed = true;
+            instruction = next;
+        }
+        return changed;
+    }
+
+    private static boolean isLevelTenComparison(AbstractInsnNode instruction) {
+        return instruction != null && instruction.getOpcode() == Opcodes.BIPUSH
+                && instruction instanceof org.objectweb.asm.tree.IntInsnNode
+                && ((org.objectweb.asm.tree.IntInsnNode) instruction).operand == 10;
+    }
+
     private void patchWoodReleaseNutrition(MethodNode method) {
         InsnList nutrition = new InsnList();
         nutrition.add(new VarInsnNode(Opcodes.ALOAD, 1));
@@ -371,6 +421,13 @@ public final class NarutoModeCompatibilityTransformer implements IClassTransform
         AbstractInsnNode current = instruction;
         while (current != null && current.getOpcode() < 0) current = current.getPrevious();
         return current;
+    }
+
+    private static AbstractInsnNode nextExecutable(AbstractInsnNode instruction) {
+        while (instruction != null && instruction.getOpcode() < 0) {
+            instruction = instruction.getNext();
+        }
+        return instruction;
     }
 
     private String[] formUuids(String className) {

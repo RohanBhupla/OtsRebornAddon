@@ -5,6 +5,7 @@ import net.minecraftforge.common.MinecraftForge;
 import net.rebornaddon.data.RankedClientData;
 import net.rebornaddon.keybind.KeyBindings;
 import net.rebornaddon.client.ClientLocalization;
+import net.rebornaddon.client.ClientZoomHandler;
 import net.rebornaddon.keybind.BlockedKeyBindingHandler;
 import net.rebornaddon.music.client.RebornMusicController;
 import net.rebornaddon.music.client.RebornMusicPauseMenu;
@@ -57,6 +58,10 @@ import net.rebornaddon.content.network.NpcSkinDataMessage;
 import net.rebornaddon.gameplay.client.ClientGameplayData;
 import net.rebornaddon.gameplay.network.GameplaySnapshotMessage;
 import net.rebornaddon.advancement.client.AdvancementClientGuard;
+import net.rebornaddon.armor.client.OtsutsukiArmorModels;
+import net.rebornaddon.mount.client.MountRenderDiagnosticCommand;
+import net.rebornaddon.mount.client.ArmorWolfMountJumpInput;
+import net.minecraftforge.client.ClientCommandHandler;
 
 import java.io.File;
 
@@ -75,6 +80,7 @@ public class ClientProxy extends CommonProxy {
 
     @Override
     public void init() {
+        ClientCommandHandler.instance.registerCommand(new MountRenderDiagnosticCommand());
         MinecraftForge.EVENT_BUS.register(new KeyBindings());
         MinecraftForge.EVENT_BUS.register(RebornMusicController.INSTANCE);
         MinecraftForge.EVENT_BUS.register(RebornMusicPauseMenu.INSTANCE);
@@ -86,8 +92,11 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(RebornGuiScaleOptionsHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(NativeContentClientHooks.INSTANCE);
         MinecraftForge.EVENT_BUS.register(ClientPerformanceOverlay.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(ArmorWolfMountJumpInput.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(ClientZoomHandler.INSTANCE);
         BlockedKeyBindingHandler.INSTANCE.suppress();
         ClientLocalization.install();
+        OtsutsukiArmorModels.install();
     }
 
     @Override

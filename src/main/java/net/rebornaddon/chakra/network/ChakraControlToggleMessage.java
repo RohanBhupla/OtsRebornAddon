@@ -2,7 +2,7 @@ package net.rebornaddon.chakra.network;
 
 import io.netty.buffer.ByteBuf;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.util.text.TextComponentTranslation;
+import net.minecraft.util.text.TextComponentString;
 import net.minecraft.util.text.TextFormatting;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessage;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
@@ -39,14 +39,16 @@ public final class ChakraControlToggleMessage implements IMessage {
                 public void run() {
                     ChakraControlCompatibility.setEnabled(player, message.enabled);
                     RebornAddonNetwork.sendChakraControlState(player, message.enabled);
-                    TextComponentTranslation status = new TextComponentTranslation(message.enabled
-                            ? "message.rebornaddon.chakra_control.enabled"
-                            : "message.rebornaddon.chakra_control.disabled");
+                    TextComponentString status = new TextComponentString(statusText(message.enabled));
                     status.getStyle().setColor(message.enabled ? TextFormatting.AQUA : TextFormatting.GRAY);
                     player.sendStatusMessage(status, true);
                 }
             });
             return null;
         }
+    }
+
+    static String statusText(boolean enabled) {
+        return enabled ? "Chakra Control: Enabled" : "Chakra Control: Disabled";
     }
 }

@@ -288,6 +288,14 @@ public final class ArmorWolfCompatibilityHandler {
             Entity present = find(server, entry.getKey());
             if (present != null && !present.isDead) {
                 spawn.acceptedOnce = true;
+                if (!spawn.formReconciled) {
+                    EntityPlayerMP owner = spawn.owner == null ? null
+                            : server.getPlayerList().getPlayerByUUID(spawn.owner);
+                    if (owner != null) {
+                        spawn.formReconciled = MountAdministrationService.INSTANCE
+                                .reconcileSpawnedForm(owner, present);
+                    }
+                }
                 if (now - spawn.startedAt >= VERIFY_WINDOW_MS) {
                     captureAttempt(present.world, spawn, "verify:present");
                     iterator.remove();
@@ -822,6 +830,7 @@ public final class ArmorWolfCompatibilityHandler {
         private boolean canceledJoinRecovered;
         private boolean acceptedOnce;
         private boolean ownerLookupRecovered;
+        private boolean formReconciled;
         private String removalSource;
         private String lastFailure;
         private final String diagnosticId;

@@ -1,6 +1,7 @@
 package net.rebornaddon;
 
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -9,6 +10,7 @@ import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLServerStartedEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
+import net.minecraft.command.CommandHandler;
 import net.rebornaddon.compat.FireDurationLimiter;
 import net.rebornaddon.compat.CreativeCooldownHandler;
 import net.rebornaddon.compat.FormAttributeCompatibilityHandler;
@@ -18,6 +20,7 @@ import net.rebornaddon.compat.NarutoPortalTileEntityPatch;
 import net.rebornaddon.compat.NarutoProgressionHandler;
 import net.rebornaddon.compat.KibaBladeCompatibilityHandler;
 import net.rebornaddon.compat.PlayerStateRecoveryHandler;
+import net.rebornaddon.compat.ProtectedNarutoMountHandler;
 import net.rebornaddon.compat.RedstoneProtectionHandler;
 import net.rebornaddon.compat.ShinobiAddonRestrictionHandler;
 import net.rebornaddon.compat.ShinobiStatRemovalHandler;
@@ -29,6 +32,7 @@ import net.rebornaddon.command.RebornTpsCommand;
 import net.rebornaddon.command.RebornDoctorCommand;
 import net.rebornaddon.command.RebornPolicyCommand;
 import net.rebornaddon.command.RebornRegionCommand;
+import net.rebornaddon.command.RebornAddNinjaXpCommand;
 import net.rebornaddon.command.LuckPermsStatusCommand;
 import net.rebornaddon.command.RebornQuestsCommand;
 import net.rebornaddon.command.RebornJutsuCommand;
@@ -124,6 +128,7 @@ public class RebornAddonMod {
         MinecraftForge.EVENT_BUS.register(RebornAdvancementService.INSTANCE);
         MinecraftForge.EVENT_BUS.register(KibaBladeCompatibilityHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(PlayerStateRecoveryHandler.INSTANCE);
+        MinecraftForge.EVENT_BUS.register(ProtectedNarutoMountHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(FireDurationLimiter.INSTANCE);
         MinecraftForge.EVENT_BUS.register(CreativeCooldownHandler.INSTANCE);
         MinecraftForge.EVENT_BUS.register(FormAttributeCompatibilityHandler.INSTANCE);
@@ -221,6 +226,13 @@ public class RebornAddonMod {
 
     @Mod.EventHandler
     public void serverStarted(FMLServerStartedEvent event) {
+        net.minecraft.server.MinecraftServer server =
+                FMLCommonHandler.instance().getMinecraftServerInstance();
+        if (server != null && server.getCommandManager() instanceof CommandHandler) {
+            // Register last so NarutoMod's legacy advancement-only implementation cannot win by load order.
+            ((CommandHandler) server.getCommandManager())
+                    .registerCommand(new RebornAddNinjaXpCommand());
+        }
         JutsuConfigurationService.INSTANCE.initialize();
         ModeConfigurationService.INSTANCE.initialize();
         ChakraControlConfigurationService.INSTANCE.initialize();
@@ -275,6 +287,7 @@ public class RebornAddonMod {
         RegionPolicyService.INSTANCE.reset();
         NpcSkinCacheService.INSTANCE.reset();
         RebornAdvancementService.INSTANCE.reset();
+        ProtectedNarutoMountHandler.INSTANCE.reset();
     }
 
 }

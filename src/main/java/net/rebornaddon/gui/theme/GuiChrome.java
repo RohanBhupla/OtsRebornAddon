@@ -61,9 +61,9 @@ public final class GuiChrome {
         Gui.drawRect(left, top, right, bottom, Theme.EDGE_DARK);
         Gui.drawRect(left + 1, top + 1, right - 1, bottom - 1, Theme.BUTTON_BORDER);
         Gui.drawRect(left + 2, top + 2, right - 2, bottom - 2, Theme.PARCHMENT_DARK);
-        Gui.drawRect(left + 3, top + 3, right - 3, top + 7, Theme.PARCHMENT_LIGHT);
+        Gui.drawRect(left + 3, top + 3, right - 3, top + 5, Theme.PARCHMENT_LIGHT);
         Gui.drawRect(left + 2, top + 2, left + 5, bottom - 2, accent);
-        Gui.drawRect(left + 8, top + 6, left + Math.min(34, width - 8), top + 7, accent);
+        Gui.drawRect(left + 8, top + 3, left + Math.min(34, width - 8), top + 4, accent);
         Gui.drawRect(right - 20, bottom - 6, right - 7, bottom - 5, accent);
         Gui.drawRect(right - 7, bottom - 11, right - 6, bottom - 5, Theme.GOLD_DARK);
     }

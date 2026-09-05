@@ -343,6 +343,15 @@ public final class StoreCatalog {
         if (EXCLUDED_STORE_DOMAINS.contains(domain)) {
             return null;
         }
+        if ("chinjufumod".equals(domain)) {
+            if (isChinjufuFoodPath(path) || isFood(stack, descriptor)) {
+                return entry(stack, FOOD, "", 100, null, false, "");
+            }
+            if (!allowsChinjufuStoreItem(path, false,
+                    item instanceof ItemBlock || item instanceof ItemDoor)) {
+                return null;
+            }
+        }
         if (descriptor.contains("netherite")) {
             return null;
         }
@@ -428,6 +437,17 @@ public final class StoreCatalog {
         return stack.getItem() instanceof ItemFood
                 || descriptor.contains("chakra_pill") || descriptor.contains("chakrapill")
                 || descriptor.contains("chakra pill");
+    }
+
+    static boolean isChinjufuFoodPath(String path) {
+        if (path == null) return false;
+        String normalized = path.toLowerCase(Locale.ROOT);
+        return normalized.startsWith("item_food_") || normalized.startsWith("block_food_")
+                || normalized.startsWith("item_bentou") || normalized.startsWith("block_boxh_");
+    }
+
+    static boolean allowsChinjufuStoreItem(String path, boolean food, boolean placeable) {
+        return food || isChinjufuFoodPath(path) || placeable;
     }
 
     private static boolean isDiamondTool(Item item) {

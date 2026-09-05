@@ -3,11 +3,21 @@ package net.rebornaddon.compat;
 import net.minecraft.advancements.Advancement;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.advancements.PlayerAdvancements;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.item.crafting.CraftingManager;
+import net.minecraft.item.crafting.IRecipe;
+import net.minecraft.util.ResourceLocation;
 import net.rebornaddon.advancement.RebornAdvancementService;
+import net.narutomod.PlayerTracker;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public final class NarutoAddonAdvancementCompatibility {
+    private static final int NARUTO_NINJA_ACCESS_LEVEL = 10;
+
     private NarutoAddonAdvancementCompatibility() {
     }
 
@@ -41,6 +51,37 @@ public final class NarutoAddonAdvancementCompatibility {
                 && replacement != null
                 && effectiveCriterion != null
                 && playerAdvancements.revokeCriterion(replacement, effectiveCriterion);
+    }
+
+    public static void safeUnlockRecipes(EntityPlayerMP player, ResourceLocation[] recipeIds) {
+        if (player == null || recipeIds == null || recipeIds.length == 0) {
+            return;
+        }
+        List<IRecipe> recipes = new ArrayList<IRecipe>(recipeIds.length);
+        for (ResourceLocation recipeId : recipeIds) {
+            if (recipeId == null) continue;
+            try {
+                IRecipe recipe = CraftingManager.getRecipe(recipeId);
+                if (recipe != null && !recipes.contains(recipe)) {
+                    recipes.add(recipe);
+                }
+            } catch (Throwable ignored) {
+                // Removed or malformed recipes are not valid advancement rewards.
+            }
+        }
+        if (!recipes.isEmpty()) {
+            player.unlockRecipes(recipes);
+        }
+    }
+
+    /** Supplies NarutoMod's historical level gate without altering real vanilla XP. */
+    public static int ninjaAccessLevel(EntityPlayer player) {
+        if (player == null) {
+            return 0;
+        }
+        int actualLevel = player.experienceLevel;
+        return PlayerTracker.isNinja(player)
+                ? Math.max(actualLevel, NARUTO_NINJA_ACCESS_LEVEL) : actualLevel;
     }
 
     /** Copies completed legacy progress before callers are redirected to its Reborn replacement. */

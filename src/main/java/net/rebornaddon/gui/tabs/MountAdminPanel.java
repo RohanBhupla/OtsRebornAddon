@@ -44,10 +44,10 @@ final class MountAdminPanel {
     private boolean favorite = true;
     private boolean select = true;
     private boolean refreshButtons;
-    private long requestedAt;
     private String selectedPlayerId = "";
     private String selectedFormId = "";
     private String scaleContext = "";
+    private JsonObject snapshot = new JsonObject();
     private int left;
     private int bodyTop;
     private int leftWidth;
@@ -63,6 +63,7 @@ final class MountAdminPanel {
         this.rightX = rightX;
         this.rightWidth = rightWidth;
         this.bottom = bottom;
+        syncData();
         prepareFields();
         syncScaleField(false);
         request(false);
@@ -314,11 +315,7 @@ final class MountAdminPanel {
         if (playerSearch != null) playerSearch.updateCursorCounter();
         if (formSearch != null) formSearch.updateCursorCounter();
         if (scaleField != null) scaleField.updateCursorCounter();
-        int current = ClientGameplayData.revision();
-        if (current != revision) {
-            revision = current;
-            clearMissingSelections();
-            syncScaleField(false);
+        if (syncData()) {
             refreshButtons = true;
         }
         request(false);
@@ -345,10 +342,18 @@ final class MountAdminPanel {
     }
 
     private void request(boolean force) {
-        long now = System.currentTimeMillis();
-        if (!force && now - requestedAt < 5000L) return;
-        requestedAt = now;
-        RebornAddonNetwork.requestGameplaySnapshot("mounts");
+        if (!force && !ClientGameplayData.shouldRequest("mounts")) return;
+        RebornAddonNetwork.requestGameplaySnapshot("mounts", force);
+    }
+
+    private boolean syncData() {
+        int current = ClientGameplayData.revision("mounts");
+        if (current == revision) return false;
+        revision = current;
+        snapshot = ClientGameplayData.get("mounts");
+        clearMissingSelections();
+        syncScaleField(false);
+        return true;
     }
 
     private void prepareFields() {
@@ -422,7 +427,7 @@ final class MountAdminPanel {
     }
 
     private JsonObject data() {
-        return ClientGameplayData.get("mounts");
+        return snapshot;
     }
 
     private JsonArray dataArray(String key) {

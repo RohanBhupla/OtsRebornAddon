@@ -305,7 +305,7 @@ final class ModerationAdminPanel {
         if (hours != null) hours.updateCursorCounter();
         if (minutes != null) minutes.updateCursorCounter();
         if (seconds != null) seconds.updateCursorCounter();
-        int current = ClientGameplayData.revision();
+        int current = ClientGameplayData.revision("moderation");
         if (current != revision) {
             revision = current;
             JsonObject root = data();
@@ -322,7 +322,7 @@ final class ModerationAdminPanel {
 
     private void request(String action, boolean force) {
         long now = System.currentTimeMillis();
-        if (!force && now - requestedAt < 5000L) return;
+        if (!force && now - requestedAt < 30000L) return;
         requestedAt = now;
         JsonObject payload = new JsonObject();
         payload.addProperty("view", VIEWS[view]);
