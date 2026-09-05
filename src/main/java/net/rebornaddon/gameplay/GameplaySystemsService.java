@@ -13,6 +13,10 @@ import net.rebornaddon.gameplay.combat.CombatAnalyticsService;
 import net.rebornaddon.gameplay.market.MarketplaceService;
 import net.rebornaddon.gameplay.codex.ShinobiCodexService;
 import net.rebornaddon.mount.MountAdministrationService;
+import net.rebornaddon.store.StoreConfigurationService;
+import net.rebornaddon.village.LuckPermsBridge;
+import net.rebornaddon.village.VillageLeadershipService;
+import net.rebornaddon.village.VillageSelectionHandler;
 import net.rebornaddon.village.network.RebornAddonNetwork;
 import net.rebornaddon.ranked.RankedSystem;
 import net.rebornaddon.exam.ExamService;
@@ -25,21 +29,25 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 
 public final class GameplaySystemsService {
     public static final GameplaySystemsService INSTANCE = new GameplaySystemsService();
+    private static final int SNAPSHOT_REFRESH_MAX_ATTEMPTS = 30;
+    private static final long SNAPSHOT_REFRESH_MAX_DELAY_MS = 1000L;
+    private static final long ADMIN_SNAPSHOT_PREWARM_DELAY_MS = 1000L;
     private static final Set<String> SECTIONS = new HashSet<String>(Arrays.asList(
             "codex", "training", "reputation", "missions", "conflicts", "marketplace", "spectating",
-            "moderation", "mounts"));
+            "moderation", "mounts", "luckperms"));
     private final ConcurrentHashMap<String, Long> requests = new ConcurrentHashMap<String, Long>();
     private final ConcurrentHashMap<String, CachedSnapshot> snapshots = new ConcurrentHashMap<String, CachedSnapshot>();
     private final Set<String> pending = java.util.Collections.newSetFromMap(
             new ConcurrentHashMap<String, Boolean>());
     private volatile MinecraftServer server;
-    private volatile ExecutorService worker;
+    private volatile ScheduledExecutorService worker;
     private volatile long mountPolicyLoadedAt;
 
     private GameplaySystemsService() {
@@ -48,7 +56,7 @@ public final class GameplaySystemsService {
     public synchronized void initialize(MinecraftServer server) {
         reset();
         this.server = server;
-        worker = Executors.newSingleThreadExecutor(new ThreadFactory() {
+        worker = Executors.newSingleThreadScheduledExecutor(new ThreadFactory() {
             @Override
             public Thread newThread(Runnable runnable) {
                 Thread thread = new Thread(runnable, "RebornAddon Gameplay Worker");
@@ -75,6 +83,34 @@ public final class GameplaySystemsService {
         EntityPlayerMP player = (EntityPlayerMP) event.player;
         MountAdministrationService.INSTANCE.applyScalePolicy(player);
         loadMountRuntimePolicy();
+        if (player.canUseCommand(2, "rebornadmin")) {
+            prewarmAdminSnapshots(player);
+        }
+    }
+
+    private void prewarmAdminSnapshots(EntityPlayerMP player) {
+        final ScheduledExecutorService currentWorker = worker;
+        final MinecraftServer currentServer = server;
+        final UUID playerId = player.getUniqueID();
+        if (currentWorker == null || currentWorker.isShutdown() || currentServer == null) return;
+        try {
+            currentWorker.schedule(new Runnable() {
+                @Override
+                public void run() {
+                    currentServer.addScheduledTask(new Runnable() {
+                        @Override
+                        public void run() {
+                            if (server != currentServer) return;
+                            EntityPlayerMP current = currentServer.getPlayerList().getPlayerByUUID(playerId);
+                            if (current == null || !current.canUseCommand(2, "rebornadmin")) return;
+                            loadPluginSnapshot(current, "mounts", false);
+                            loadPluginSnapshot(current, "luckperms", false);
+                        }
+                    });
+                }
+            }, ADMIN_SNAPSHOT_PREWARM_DELAY_MS, TimeUnit.MILLISECONDS);
+        } catch (RuntimeException ignored) {
+        }
     }
 
     @SubscribeEvent
@@ -94,7 +130,8 @@ public final class GameplaySystemsService {
         String section = clean(rawSection, 32).toLowerCase(Locale.ROOT);
         String action = clean(rawAction, 64).toLowerCase(Locale.ROOT);
         if (!SECTIONS.contains(section)) return;
-        if (("moderation".equals(section) || "mounts".equals(section))
+        if (("moderation".equals(section) || "mounts".equals(section)
+                || "luckperms".equals(section))
                 && !player.canUseCommand(2, "rebornadmin")) {
             status(player, "You do not have permission to use that admin section.", true);
             return;
@@ -103,9 +140,9 @@ public final class GameplaySystemsService {
             status(player, "That request was too large.", true);
             return;
         }
-        if ("snapshot".equals(action)) {
+        if ("snapshot".equals(action) || "snapshot-refresh".equals(action)) {
             if (rateLimited(player.getUniqueID(), section)) return;
-            sendSnapshot(player, section);
+            sendSnapshot(player, section, "snapshot-refresh".equals(action));
             return;
         }
         if ("training".equals(section) && "reset-recap".equals(action)) {
@@ -171,6 +208,21 @@ public final class GameplaySystemsService {
             submitMountAction(player, action, payload);
             return;
         }
+        if ("luckperms".equals(section)) {
+            if (!GameplaySystemsPluginBridge.isAvailable()) {
+                status(player, "The hosted LuckPerms administration service is not enabled yet.", true);
+                RebornAddonNetwork.sendGameplaySnapshot(player, section,
+                        unavailable(section, "The hosted plugin needs its LuckPerms administration update."));
+                return;
+            }
+            if (!"luckperms.parent.add".equals(action)
+                    && !"luckperms.parent.remove".equals(action)) {
+                status(player, "That LuckPerms administration action is not supported.", true);
+                return;
+            }
+            submitAction(player, section, action, payload, true);
+            return;
+        }
         if (!GameplaySystemsPluginBridge.isAvailable()) {
             status(player, "This hosted gameplay feature is not enabled on the server yet.", true);
             sendSnapshot(player, section);
@@ -180,6 +232,10 @@ public final class GameplaySystemsService {
     }
 
     public void sendSnapshot(EntityPlayerMP player, String section) {
+        sendSnapshot(player, section, false);
+    }
+
+    private void sendSnapshot(EntityPlayerMP player, String section, boolean force) {
         String json;
         if ("training".equals(section)) {
             json = CombatAnalyticsService.INSTANCE.snapshot(player);
@@ -191,7 +247,7 @@ public final class GameplaySystemsService {
             CachedSnapshot cached = snapshots.get(cacheKey(player.getUniqueID(), section));
             if (cached != null) mergeSpectating(root, cached.json);
             json = root.toString();
-            loadPluginSnapshot(player, section);
+            loadPluginSnapshot(player, section, force);
         } else if ("mounts".equals(section)) {
             CachedSnapshot cached = snapshots.get(cacheKey(player.getUniqueID(), section));
             boolean pluginAvailable = GameplaySystemsPluginBridge.isAvailable();
@@ -199,11 +255,11 @@ public final class GameplaySystemsService {
                     ? loading(section)
                     : unavailable(section, "Private mount changes require the hosted server plugin.");
             json = MountAdministrationService.INSTANCE.augmentSnapshot(player, base);
-            if (pluginAvailable) loadPluginSnapshot(player, section);
+            if (pluginAvailable) loadPluginSnapshot(player, section, force);
         } else if (GameplaySystemsPluginBridge.isAvailable()) {
             CachedSnapshot cached = snapshots.get(cacheKey(player.getUniqueID(), section));
             json = cached == null ? loading(section) : cached.json;
-            loadPluginSnapshot(player, section);
+            loadPluginSnapshot(player, section, force);
         } else {
             json = unavailable(section, "This section becomes available on the hosted server after its plugin update.");
         }
@@ -295,8 +351,8 @@ public final class GameplaySystemsService {
         }
     }
 
-    private void loadPluginSnapshot(EntityPlayerMP player, final String section) {
-        final ExecutorService currentWorker = worker;
+    private void loadPluginSnapshot(EntityPlayerMP player, final String section, boolean force) {
+        final ScheduledExecutorService currentWorker = worker;
         final MinecraftServer currentServer = server;
         if (player == null || currentWorker == null || currentWorker.isShutdown()
                 || currentServer == null || !GameplaySystemsPluginBridge.isAvailable()) return;
@@ -304,13 +360,39 @@ public final class GameplaySystemsService {
         final String key = cacheKey(playerId, section);
         CachedSnapshot cached = snapshots.get(key);
         long now = System.currentTimeMillis();
-        if (cached != null && now - cached.loadedAt < 10000L) return;
+        if (!force && cached != null && now - cached.loadedAt < cacheDuration(section)) return;
         if (!pending.add("snapshot:" + key)) return;
         final Object sender = GameplaySystemsPluginBridge.resolveSender(player);
+        try {
+            fetchPluginSnapshot(currentWorker, currentServer, sender, playerId, key, section, 0);
+        } catch (RuntimeException stopped) {
+            pending.remove("snapshot:" + key);
+        }
+    }
+
+    private void fetchPluginSnapshot(final ScheduledExecutorService currentWorker,
+                                     final MinecraftServer currentServer, final Object sender,
+                                     final UUID playerId, final String key, final String section,
+                                     final int attempt) {
         currentWorker.execute(new Runnable() {
             @Override
             public void run() {
                 final String[] response = GameplaySystemsPluginBridge.snapshot(sender, section);
+                final String responsePayload = GameplaySystemsPluginBridge.payload(response);
+                if (GameplaySystemsPluginBridge.successful(response)
+                        && isRefreshingSnapshot(responsePayload)
+                        && attempt < SNAPSHOT_REFRESH_MAX_ATTEMPTS
+                        && server == currentServer && !currentWorker.isShutdown()) {
+                    currentWorker.schedule(new Runnable() {
+                        @Override
+                        public void run() {
+                            fetchPluginSnapshot(currentWorker, currentServer, sender, playerId,
+                                    key, section, attempt + 1);
+                        }
+                    }, Math.min(SNAPSHOT_REFRESH_MAX_DELAY_MS, 200L * (attempt + 1)),
+                            TimeUnit.MILLISECONDS);
+                    return;
+                }
                 currentServer.addScheduledTask(new Runnable() {
                     @Override
                     public void run() {
@@ -318,27 +400,32 @@ public final class GameplaySystemsService {
                         if (server != currentServer) return;
                         EntityPlayerMP current = currentServer.getPlayerList().getPlayerByUUID(playerId);
                         if (current == null) return;
-                        if (GameplaySystemsPluginBridge.successful(response)) {
-                            String responsePayload = GameplaySystemsPluginBridge.payload(response);
+                        CachedSnapshot previous = snapshots.get(key);
+                        if (GameplaySystemsPluginBridge.successful(response)
+                                && !isRefreshingSnapshot(responsePayload)) {
+                            String completedPayload = responsePayload;
                             if ("mounts".equals(section)) {
-                                responsePayload = MountAdministrationService.INSTANCE
-                                        .augmentSnapshot(current, responsePayload);
+                                completedPayload = MountAdministrationService.INSTANCE
+                                        .augmentSnapshot(current, completedPayload);
                             }
                             snapshots.put(key, new CachedSnapshot(
-                                    responsePayload, System.currentTimeMillis()));
-                            sendSnapshot(current, section);
-                        } else {
-                            String failurePayload = unavailable(section,
-                                    GameplaySystemsPluginBridge.message(response));
-                            if ("mounts".equals(section)) {
-                                failurePayload = MountAdministrationService.INSTANCE
-                                        .augmentSnapshot(current, failurePayload);
-                            }
-                            snapshots.put(key, new CachedSnapshot(
-                                    failurePayload, System.currentTimeMillis()));
+                                    completedPayload, System.currentTimeMillis()));
                             RebornAddonNetwork.sendGameplaySnapshot(current, section,
-                                    failurePayload);
+                                    completedPayload);
+                            return;
                         }
+                        if (previous != null) {
+                            RebornAddonNetwork.sendGameplaySnapshot(current, section, previous.json);
+                            return;
+                        }
+                        String failurePayload = GameplaySystemsPluginBridge.successful(response)
+                                ? responsePayload : unavailable(section,
+                                GameplaySystemsPluginBridge.message(response));
+                        if ("mounts".equals(section)) {
+                            failurePayload = MountAdministrationService.INSTANCE
+                                    .augmentSnapshot(current, failurePayload);
+                        }
+                        RebornAddonNetwork.sendGameplaySnapshot(current, section, failurePayload);
                     }
                 });
             }
@@ -346,7 +433,7 @@ public final class GameplaySystemsService {
     }
 
     private void loadMountRuntimePolicy() {
-        final ExecutorService currentWorker = worker;
+        final ScheduledExecutorService currentWorker = worker;
         final MinecraftServer currentServer = server;
         long now = System.currentTimeMillis();
         if (currentWorker == null || currentWorker.isShutdown() || currentServer == null
@@ -388,7 +475,7 @@ public final class GameplaySystemsService {
     private void submitAction(EntityPlayerMP player, final String section,
                               final String action, final String payload,
                               final boolean acceptResponseSnapshot) {
-        final ExecutorService currentWorker = worker;
+        final ScheduledExecutorService currentWorker = worker;
         final MinecraftServer currentServer = server;
         if (currentWorker == null || currentWorker.isShutdown() || currentServer == null) {
             status(player, "The hosted gameplay worker is not running.", true);
@@ -413,15 +500,22 @@ public final class GameplaySystemsService {
                         EntityPlayerMP current = currentServer.getPlayerList().getPlayerByUUID(playerId);
                         if (current == null) return;
                         boolean success = GameplaySystemsPluginBridge.successful(response);
+                        if (success && "luckperms".equals(section)) {
+                            refreshLuckPermsTarget(currentServer, payload);
+                        }
                         if (!(success && "moderation".equals(section)
                                 && "moderation.query".equals(action))) {
                             status(current, GameplaySystemsPluginBridge.message(response), !success);
                         }
                         String responsePayload = GameplaySystemsPluginBridge.payload(response);
-                        if (success && acceptResponseSnapshot && validSnapshot(responsePayload)) {
+                        if (success && acceptResponseSnapshot && validSnapshot(responsePayload)
+                                && !isRefreshingSnapshot(responsePayload)) {
                             snapshots.put(cacheKey(playerId, section), new CachedSnapshot(
                                     responsePayload, System.currentTimeMillis()));
                             RebornAddonNetwork.sendGameplaySnapshot(current, section, responsePayload);
+                        } else if (success && acceptResponseSnapshot
+                                && isRefreshingSnapshot(responsePayload)) {
+                            sendSnapshot(current, section, true);
                         } else {
                             snapshots.remove(cacheKey(playerId, section));
                             sendSnapshot(current, section);
@@ -434,7 +528,7 @@ public final class GameplaySystemsService {
 
     private void submitMountAction(EntityPlayerMP player, final String action,
                                    final String payload) {
-        final ExecutorService currentWorker = worker;
+        final ScheduledExecutorService currentWorker = worker;
         final MinecraftServer currentServer = server;
         if (currentWorker == null || currentWorker.isShutdown() || currentServer == null) {
             status(player, "The hosted gameplay worker is not running.", true);
@@ -536,6 +630,48 @@ public final class GameplaySystemsService {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    static boolean isRefreshingSnapshot(String json) {
+        if (!validSnapshot(json)) return false;
+        try {
+            JsonObject root = new JsonParser().parse(json).getAsJsonObject();
+            if (!root.has("message") || !root.get("message").isJsonPrimitive()) return false;
+            String message = root.get("message").getAsString().toLowerCase(Locale.ROOT);
+            return message.contains("refreshing") || message.contains("still loading")
+                    || message.contains("loading private") || message.contains("loading hosted");
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    static long cacheDuration(String section) {
+        return "mounts".equals(section) || "luckperms".equals(section)
+                || "moderation".equals(section) ? 60000L : 10000L;
+    }
+
+    private static void refreshLuckPermsTarget(MinecraftServer server, String payload) {
+        if (server == null) return;
+        String rawId = jsonString(payload, "targetUuid");
+        String group = jsonString(payload, "group").toLowerCase(Locale.ROOT);
+        final UUID targetId;
+        try {
+            targetId = UUID.fromString(rawId);
+        } catch (IllegalArgumentException invalid) {
+            return;
+        }
+        LuckPermsBridge.INSTANCE.invalidateUser(targetId);
+        if (!group.isEmpty()) LuckPermsBridge.INSTANCE.invalidateGroup(group);
+        EntityPlayerMP target = server.getPlayerList().getPlayerByUUID(targetId);
+        if (target == null) return;
+        LuckPermsBridge.INSTANCE.findGroups(target, true, new LuckPermsBridge.GroupsLookupCallback() {
+            @Override
+            public void onLookup(EntityPlayerMP current, Set<String> groups) {
+                VillageSelectionHandler.INSTANCE.reconcileVillageFromGroups(current, groups);
+                StoreConfigurationService.INSTANCE.refreshForGroups(current, groups);
+                VillageLeadershipService.INSTANCE.refreshRoleAccess(current, groups);
+            }
+        });
     }
 
     private static String cacheKey(UUID player, String section) {

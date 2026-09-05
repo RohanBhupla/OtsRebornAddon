@@ -70,6 +70,16 @@ public class GuiHub extends RebornScaledGuiScreen {
     }
 
     @Override
+    protected int minimumLayoutWidth() {
+        return MAX_PANEL_WIDTH + 12;
+    }
+
+    @Override
+    protected int minimumLayoutHeight() {
+        return MAX_PANEL_HEIGHT + 12;
+    }
+
+    @Override
     public void initGui() {
         super.initGui();
         panelWidth = Math.max(260, Math.min(MAX_PANEL_WIDTH, width - 12));

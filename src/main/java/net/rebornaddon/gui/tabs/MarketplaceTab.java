@@ -200,8 +200,8 @@ public final class MarketplaceTab implements HubTab {
         if (price != null) price.updateCursorCounter();
         if (amount != null) amount.updateCursorCounter();
         if (description != null) description.updateCursorCounter();
-        if (revision != ClientGameplayData.revision()) {
-            revision = ClientGameplayData.revision();
+        if (revision != ClientGameplayData.revision("marketplace")) {
+            revision = ClientGameplayData.revision("marketplace");
             refresh = true;
         }
         request(false);

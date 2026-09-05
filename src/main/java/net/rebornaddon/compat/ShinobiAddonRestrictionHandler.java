@@ -6,8 +6,11 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemArmor;
+import net.minecraft.item.ItemBow;
 import net.minecraft.item.ItemMonsterPlacer;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.ItemSword;
 import net.minecraft.init.Items;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.potion.PotionType;
@@ -182,6 +185,11 @@ public class ShinobiAddonRestrictionHandler {
             "narutomod:normal_biju_cloak",
             "kabutoaddon:biju_cloak",
             "ahznbcursemarkaddon:susanoo_armor"
+    };
+    private static final String[] CHINJUFU_HIDDEN_EQUIPMENT_PREFIXES = new String[] {
+            "item_ammunition_", "item_cartridge_", "item_rensouhou", "item_koukakuhou",
+            "item_shigurehou", "item_3rensou_kijyuu", "item_gyorai_", "item_kk_",
+            "item_kb_", "item_sword_", "item_shield_", "block_ammunition_box"
     };
     private static final String[] BLOCKED_PREFIXES = new String[] {
             "narutomod:ninja_armor_moon",
@@ -622,13 +630,30 @@ public class ShinobiAddonRestrictionHandler {
 
     private static boolean isHiddenOnly(Item item) {
         String id = registryName(item);
-        if (HIDDEN_ONLY_ITEMS.contains(id)) {
+        if (HIDDEN_ONLY_ITEMS.contains(id) || isChinjufuHiddenEquipment(item)) {
             return true;
         }
         for (String prefix : HIDDEN_ONLY_PREFIXES) {
             if (id.startsWith(prefix)) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    private static boolean isChinjufuHiddenEquipment(Item item) {
+        ResourceLocation name = item == null ? null : item.getRegistryName();
+        if (name == null || !"chinjufumod".equals(name.getResourceDomain())) return false;
+        if (item instanceof ItemArmor || item instanceof ItemSword || item instanceof ItemBow) return true;
+        return isChinjufuCombatPath(name.getResourceDomain(), name.getResourcePath());
+    }
+
+    static boolean isChinjufuCombatPath(String domain, String path) {
+        if (!"chinjufumod".equals(domain) || path == null) return false;
+        String normalized = path.toLowerCase(java.util.Locale.ROOT);
+        if ("item_anchor".equals(normalized)) return true;
+        for (String prefix : CHINJUFU_HIDDEN_EQUIPMENT_PREFIXES) {
+            if (normalized.startsWith(prefix)) return true;
         }
         return false;
     }

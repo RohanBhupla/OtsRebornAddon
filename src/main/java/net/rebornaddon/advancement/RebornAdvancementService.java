@@ -16,6 +16,7 @@ import net.minecraft.init.Items;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.text.TextComponentString;
+import net.minecraftforge.event.entity.player.AdvancementEvent;
 import net.minecraftforge.event.entity.living.LivingEquipmentChangeEvent;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -24,6 +25,8 @@ import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.registry.ForgeRegistries;
 import net.rebornaddon.compat.NarutoAddonAdvancementCompatibility;
 import net.rebornaddon.compat.ShinobiAddonRestrictionHandler;
+import net.narutomod.Chakra;
+import net.narutomod.PlayerTracker;
 import net.rebornaddon.jutsu.JutsuDefinition;
 import net.rebornaddon.jutsu.JutsuRegistry;
 import net.rebornaddon.jutsu.JutsuSettingsCache;
@@ -43,6 +46,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,6 +71,19 @@ public final class RebornAdvancementService {
     public static final ResourceLocation STORE = id("store");
 
     private static final Logger LOGGER = LogManager.getLogger("RebornAddon Advancements");
+    private static final double INITIAL_NINJA_XP = 0.1D;
+    private static final ResourceLocation LEGACY_NINJA =
+            new ResourceLocation("narutomod", "ninjaachievement");
+    private static final String[] NINJA_RECIPE_REWARDS = new String[] {
+            "narutomod:ninja_boots_recipe",
+            "narutomod:ninja_pants_recipe_konoha",
+            "narutomod:ninja_vest_recipe_konoha",
+            "narutomod:ninja_helmet_recipe_konoha",
+            "narutomod:explosive_tag_recipe",
+            "narutomod:kunai_explosive_recipe"
+    };
+    private static final List<String> NINJA_COMPATIBILITY_ALIASES =
+            Collections.singletonList(LEGACY_NINJA.toString());
     private static final List<ResourceLocation> ROOT_IDS = Collections.unmodifiableList(Arrays.asList(
             NINJA, NATURES, KEKKEI_GENKAI, CLAN, MODES, STORE));
     private static final String[] LEGENDARY_MIST_SWORDS = new String[] {
@@ -116,6 +133,7 @@ public final class RebornAdvancementService {
     private final Map<String, Advancement> natureNodes = new LinkedHashMap<String, Advancement>();
     private final Map<String, Advancement> modeNodes = new LinkedHashMap<String, Advancement>();
     private final Map<UUID, Long> inventoryFingerprints = new HashMap<UUID, Long>();
+    private final Set<UUID> ninjaBenefitsApplied = new HashSet<UUID>();
     private final List<Advancement> created = new ArrayList<Advancement>();
     private List<Advancement> visibleCatalog = Collections.emptyList();
     private MinecraftServer server;
@@ -171,6 +189,7 @@ public final class RebornAdvancementService {
         natureNodes.clear();
         modeNodes.clear();
         inventoryFingerprints.clear();
+        ninjaBenefitsApplied.clear();
         created.clear();
         visibleCatalog = Collections.emptyList();
     }
@@ -203,6 +222,30 @@ public final class RebornAdvancementService {
         return "rebornaddon".equals(advancement.getId().getResourceDomain());
     }
 
+    /** Repairs both advancement representations and returns the authoritative Ninja state. */
+    public synchronized boolean ensureNinja(EntityPlayerMP player) {
+        if (player == null) {
+            return false;
+        }
+
+        Advancement reborn = find(NINJA);
+        Advancement legacy = server == null ? null
+                : server.getAdvancementManager().getAdvancement(LEGACY_NINJA);
+        boolean ninja = isComplete(player, reborn)
+                || isComplete(player, legacy)
+                || PlayerTracker.isNinja(player);
+        if (!ninja) {
+            return false;
+        }
+
+        if (reborn != null && !isComplete(player, reborn)) {
+            grant(player, reborn, "ninjaachievement");
+        }
+        synchronizeNinjaProgress(player);
+        applyNinjaBenefits(player);
+        return true;
+    }
+
     private synchronized Advancement replacement(Advancement advancement) {
         if (advancement == null || isRebornAdvancement(advancement)) {
             return advancement;
@@ -210,6 +253,12 @@ public final class RebornAdvancementService {
         ResourceLocation id = advancement.getId();
         if (id == null) {
             return advancement;
+        }
+        if (LEGACY_NINJA.equals(id)) {
+            Advancement ninja = find(NINJA);
+            if (ninja != null) {
+                return ninja;
+            }
         }
         Advancement replacement = legacyAliases.get(id.toString().toLowerCase(Locale.ROOT));
         return replacement == null ? advancement : replacement;
@@ -222,6 +271,8 @@ public final class RebornAdvancementService {
             migrateLegacyProgress(player);
             grantAutomaticRoots(player);
             syncInventory(player, true);
+            synchronizeNinjaProgress(player);
+            applyNinjaBenefits(player);
             syncModes(player);
             exposeAdvancements(player, true);
         }
@@ -237,13 +288,33 @@ public final class RebornAdvancementService {
         EntityPlayerMP player = (EntityPlayerMP) event.player;
         migrateLegacyProgress(player);
         syncInventory(player, false);
+        synchronizeNinjaProgress(player);
+        applyNinjaBenefits(player);
         syncModes(player);
         exposeAdvancements(player, false);
     }
 
     @SubscribeEvent
     public void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.player != null) inventoryFingerprints.remove(event.player.getUniqueID());
+        if (event.player != null) {
+            inventoryFingerprints.remove(event.player.getUniqueID());
+            ninjaBenefitsApplied.remove(event.player.getUniqueID());
+        }
+    }
+
+    @SubscribeEvent
+    public void onAdvancement(AdvancementEvent event) {
+        if (!initialized || !(event.getEntityPlayer() instanceof EntityPlayerMP)
+                || event.getAdvancement() == null || event.getAdvancement().getId() == null) {
+            return;
+        }
+        ResourceLocation advancementId = event.getAdvancement().getId();
+        if (!NINJA.equals(advancementId) && !LEGACY_NINJA.equals(advancementId)) {
+            return;
+        }
+        EntityPlayerMP player = (EntityPlayerMP) event.getEntityPlayer();
+        synchronizeNinjaProgress(player);
+        applyNinjaBenefits(player);
     }
 
     @SubscribeEvent
@@ -333,7 +404,7 @@ public final class RebornAdvancementService {
                 new Criterion(new ImpossibleTrigger.Instance()));
         String[][] requirements = new String[][] {{criteria.keySet().iterator().next()}};
         Advancement advancement = new Advancement(id, parent, display,
-                new AdvancementRewards(0, new ResourceLocation[0], new ResourceLocation[0], null),
+                AdvancementRewards.EMPTY,
                 criteria, requirements);
         if (!register(advancement)) {
             return find(id);
@@ -471,10 +542,9 @@ public final class RebornAdvancementService {
     }
 
     private void registerLegacyAliases(Advancement ninja) {
-        alias("narutomod:ninjaachievement", ninja);
-        alias("narutomodaddon:started_as_ninja", ninja);
-        alias("narutomod:achievementmedicalgenin", ninja);
-        alias("narutomod:learned_1st_jutsu", ninja);
+        for (String legacyId : NINJA_COMPATIBILITY_ALIASES) {
+            alias(legacyId, ninja);
+        }
         alias("narutomod:sharinganopened", findKekkei("sharingan"));
         alias("narutomod:mangekyosharinganopened", findKekkei("sharingan"));
         alias("narutomod:eternalmangekyoachieved", findKekkei("sharingan"));
@@ -498,6 +568,15 @@ public final class RebornAdvancementService {
         alias("narutomod:jiton_acquired", findKekkei("jiton"));
         alias("narutomod:koton_acquired", findKekkei("koton"));
         alias("narutomod:mokuton_acquired", findKekkei("mokuton"));
+    }
+
+    static boolean isLegacyNinjaAlias(String advancementId) {
+        return NINJA_COMPATIBILITY_ALIASES.contains(
+                advancementId == null ? "" : advancementId.trim().toLowerCase(Locale.ROOT));
+    }
+
+    static List<String> ninjaRecipeRewardIds() {
+        return Collections.unmodifiableList(Arrays.asList(NINJA_RECIPE_REWARDS));
     }
 
     private Advancement findKekkei(String token) {
@@ -818,6 +897,37 @@ public final class RebornAdvancementService {
                 }
             } catch (Throwable ignored) {
             }
+        }
+    }
+
+    private void synchronizeNinjaProgress(EntityPlayerMP player) {
+        if (player == null || server == null) return;
+        Advancement reborn = find(NINJA);
+        Advancement legacy = server.getAdvancementManager().getAdvancement(LEGACY_NINJA);
+        if (reborn == null || legacy == null) return;
+        if (isComplete(player, legacy) && !isComplete(player, reborn)) {
+            NarutoAddonAdvancementCompatibility.migrateCompletion(
+                    player.getAdvancements(), legacy, reborn);
+        } else if (isComplete(player, reborn) && !isComplete(player, legacy)) {
+            grant(player, legacy, "ninjaachievement");
+        }
+    }
+
+    private void applyNinjaBenefits(EntityPlayerMP player) {
+        Advancement ninja = find(NINJA);
+        if (player == null || ninja == null || !isComplete(player, ninja)) {
+            return;
+        }
+        if (!PlayerTracker.isNinja(player)) {
+            PlayerTracker.addBattleXp(player, INITIAL_NINJA_XP);
+        }
+        Chakra.pathway(player);
+        if (ninjaBenefitsApplied.add(player.getUniqueID())) {
+            ResourceLocation[] recipes = new ResourceLocation[NINJA_RECIPE_REWARDS.length];
+            for (int index = 0; index < NINJA_RECIPE_REWARDS.length; index++) {
+                recipes[index] = new ResourceLocation(NINJA_RECIPE_REWARDS[index]);
+            }
+            NarutoAddonAdvancementCompatibility.safeUnlockRecipes(player, recipes);
         }
     }
 

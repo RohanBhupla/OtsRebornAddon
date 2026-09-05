@@ -76,6 +76,9 @@ jar {
     }
 }
 
+// A plain `jar` invocation must still produce the runtime-obfuscated Forge artifact.
+jar.finalizedBy 'reobfJar'
+
 processResources {
     inputs.property "version", project.version
     inputs.property "mcversion", "1.12.2"

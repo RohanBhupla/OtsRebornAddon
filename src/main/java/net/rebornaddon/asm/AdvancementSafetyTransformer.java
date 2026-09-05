@@ -24,6 +24,9 @@ public final class AdvancementSafetyTransformer implements IClassTransformer {
     private static final String HELPER =
             "net/rebornaddon/compat/NarutoAddonAdvancementCompatibility";
     private static final String GUI_TOAST = "net.minecraft.client.gui.toasts.GuiToast";
+    private static final String ADVANCEMENT_REWARDS =
+            "net.minecraft.advancements.AdvancementRewards";
+    private static final String ENTITY_PLAYER_MP = "net/minecraft/entity/player/EntityPlayerMP";
     private static final String CLIENT_HELPER =
             "net/rebornaddon/advancement/client/AdvancementClientGuard";
     private static final String PROGRESS_DESC =
@@ -40,8 +43,9 @@ public final class AdvancementSafetyTransformer implements IClassTransformer {
 
         String className = transformedName == null ? name : transformedName;
         boolean toastClass = GUI_TOAST.equals(className);
+        boolean rewardsClass = ADVANCEMENT_REWARDS.equals(className);
         if (className == null
-                || (!toastClass && (className.startsWith("net.minecraft.")
+                || (!toastClass && !rewardsClass && (className.startsWith("net.minecraft.")
                 || className.startsWith("net.rebornaddon.")
                 || !containsPlayerAdvancementsReference(basicClass)))) {
             return basicClass;
@@ -54,6 +58,8 @@ public final class AdvancementSafetyTransformer implements IClassTransformer {
             for (MethodNode method : node.methods) {
                 if (toastClass) {
                     changed |= injectToastGuard(method);
+                } else if (rewardsClass) {
+                    changed |= replaceUnsafeRecipeUnlocks(method);
                 } else {
                     changed |= replaceUnsafeCalls(method);
                 }
@@ -126,6 +132,29 @@ public final class AdvancementSafetyTransformer implements IClassTransformer {
             call.owner = HELPER;
             call.name = helperMethod;
             call.desc = withPlayerAdvancements(call.desc);
+            call.itf = false;
+            changed = true;
+        }
+        return changed;
+    }
+
+    private boolean replaceUnsafeRecipeUnlocks(MethodNode method) {
+        boolean changed = false;
+        for (AbstractInsnNode instruction = method.instructions.getFirst();
+             instruction != null; instruction = instruction.getNext()) {
+            if (!(instruction instanceof MethodInsnNode)) continue;
+            MethodInsnNode call = (MethodInsnNode) instruction;
+            if (call.getOpcode() != Opcodes.INVOKEVIRTUAL
+                    || !ENTITY_PLAYER_MP.equals(call.owner)
+                    || !("func_193102_a".equals(call.name) || "unlockRecipes".equals(call.name))
+                    || !"([Lnet/minecraft/util/ResourceLocation;)V".equals(call.desc)) {
+                continue;
+            }
+            call.setOpcode(Opcodes.INVOKESTATIC);
+            call.owner = HELPER;
+            call.name = "safeUnlockRecipes";
+            call.desc = "(Lnet/minecraft/entity/player/EntityPlayerMP;"
+                    + "[Lnet/minecraft/util/ResourceLocation;)V";
             call.itf = false;
             changed = true;
         }

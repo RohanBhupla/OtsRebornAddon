@@ -42,6 +42,7 @@ import net.rebornaddon.content.network.NpcSkinRequestMessage;
 import net.rebornaddon.content.network.NpcSkinDataMessage;
 import net.rebornaddon.gameplay.network.GameplayActionMessage;
 import net.rebornaddon.gameplay.network.GameplaySnapshotMessage;
+import net.rebornaddon.mount.network.MountJumpMessage;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -134,6 +135,8 @@ public final class RebornAddonNetwork {
                 ChakraControlToggleMessage.class, 41, Side.SERVER);
         CHANNEL.registerMessage(ChakraControlStateMessage.Handler.class,
                 ChakraControlStateMessage.class, 42, Side.CLIENT);
+        CHANNEL.registerMessage(MountJumpMessage.Handler.class,
+                MountJumpMessage.class, 43, Side.SERVER);
     }
 
     public static void openVillageGui(EntityPlayerMP player) {
@@ -372,7 +375,11 @@ public final class RebornAddonNetwork {
     }
 
     public static void requestGameplaySnapshot(String section) {
-        sendGameplayAction(section, "snapshot", "{}");
+        requestGameplaySnapshot(section, false);
+    }
+
+    public static void requestGameplaySnapshot(String section, boolean force) {
+        sendGameplayAction(section, force ? "snapshot-refresh" : "snapshot", "{}");
     }
 
     public static void sendGameplaySnapshot(EntityPlayerMP player, String section, String json) {

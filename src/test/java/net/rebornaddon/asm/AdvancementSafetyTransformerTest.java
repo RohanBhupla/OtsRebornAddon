@@ -11,6 +11,9 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -82,6 +85,59 @@ public class AdvancementSafetyTransformerTest {
                 + "Lnet/minecraft/advancements/AdvancementProgress;", rewritten.desc);
     }
 
+    @Test
+    public void filtersMissingRecipeRewardsBeforeTheyReachRecipeBook() {
+        ClassNode input = new ClassNode();
+        input.version = Opcodes.V1_8;
+        input.access = Opcodes.ACC_PUBLIC;
+        input.name = "net/minecraft/advancements/AdvancementRewards";
+        input.superName = "java/lang/Object";
+        MethodNode apply = new MethodNode(Opcodes.ACC_PUBLIC, "apply",
+                "(Lnet/minecraft/entity/player/EntityPlayerMP;"
+                        + "[Lnet/minecraft/util/ResourceLocation;)V", null, null);
+        apply.instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        apply.instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        apply.instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL,
+                "net/minecraft/entity/player/EntityPlayerMP", "unlockRecipes",
+                "([Lnet/minecraft/util/ResourceLocation;)V", false));
+        apply.instructions.add(new InsnNode(Opcodes.RETURN));
+        apply.maxStack = 2;
+        apply.maxLocals = 3;
+        input.methods.add(apply);
+
+        ClassNode output = read(new AdvancementSafetyTransformer().transform(
+                "l", "net.minecraft.advancements.AdvancementRewards", write(input)));
+
+        MethodInsnNode rewritten = firstCall(output.methods.get(0));
+        assertEquals(Opcodes.INVOKESTATIC, rewritten.getOpcode());
+        assertEquals("net/rebornaddon/compat/NarutoAddonAdvancementCompatibility",
+                rewritten.owner);
+        assertEquals("safeUnlockRecipes", rewritten.name);
+        assertEquals("(Lnet/minecraft/entity/player/EntityPlayerMP;"
+                + "[Lnet/minecraft/util/ResourceLocation;)V", rewritten.desc);
+    }
+
+    @Test
+    public void rewritesForge112sActualAdvancementRewardRecipeCall() throws Exception {
+        byte[] original = resource("net/minecraft/advancements/AdvancementRewards.class");
+        ClassNode output = read(new AdvancementSafetyTransformer().transform(
+                "l", "net.minecraft.advancements.AdvancementRewards", original));
+        boolean safeUnlockFound = false;
+        for (MethodNode method : output.methods) {
+            for (AbstractInsnNode instruction = method.instructions.getFirst();
+                 instruction != null; instruction = instruction.getNext()) {
+                if (!(instruction instanceof MethodInsnNode)) continue;
+                MethodInsnNode call = (MethodInsnNode) instruction;
+                if ("net/rebornaddon/compat/NarutoAddonAdvancementCompatibility"
+                        .equals(call.owner) && "safeUnlockRecipes".equals(call.name)) {
+                    safeUnlockFound = true;
+                }
+            }
+        }
+        assertTrue("Forge 1.12 AdvancementRewards still calls the unsafe recipe ID overload",
+                safeUnlockFound);
+    }
+
     private static MethodInsnNode firstCall(MethodNode method) {
         for (AbstractInsnNode instruction = method.instructions.getFirst();
              instruction != null; instruction = instruction.getNext()) {
@@ -100,5 +156,20 @@ public class AdvancementSafetyTransformerTest {
         ClassNode node = new ClassNode();
         new ClassReader(bytes).accept(node, 0);
         return node;
+    }
+
+    private static byte[] resource(String path) throws Exception {
+        InputStream input = AdvancementSafetyTransformerTest.class.getClassLoader()
+                .getResourceAsStream(path);
+        if (input == null) throw new AssertionError("Missing class resource " + path);
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) >= 0) output.write(buffer, 0, count);
+            return output.toByteArray();
+        } finally {
+            input.close();
+        }
     }
 }

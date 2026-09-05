@@ -15,6 +15,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.event.world.GetCollisionBoxesEvent;
 import net.rebornaddon.chakra.ChakraControlConfigurationService;
 import net.rebornaddon.content.entity.EntityMissionNpc;
+import net.rebornaddon.mount.ArmorWolfCompatibilityHandler;
 import net.minecraft.world.World;
 
 import java.util.Map;
@@ -22,7 +23,9 @@ import java.util.Map;
 public final class ChakraControlCompatibility {
     private static final String STATE_KEY = "RebornChakraControl";
     private static final double WATER_SURFACE_THICKNESS = 0.0625D;
-    private static final double WATER_SURFACE_GRACE = 0.18D;
+    private static final double WATER_SURFACE_ENTRY_EPSILON = 0.002D;
+    private static final double WATER_SURFACE_RECOVERY_DEPTH = 1.25D;
+    private static final double MOUNT_SURFACE_RELEASE_VELOCITY = 0.05D;
     private static final double WALL_PROBE_DISTANCE = 0.12D;
     private static final double WALL_PROBE_GROW = 0.035D;
     private static final double WALL_CLIMB_SPEED = 0.17D;
@@ -91,10 +94,27 @@ public final class ChakraControlCompatibility {
                 && wantsToClimb(npc, false)) applyWallClimbing(npc);
     }
 
+    public static void applyMountWaterWalking(EntityLivingBase mount) {
+        if (!ArmorWolfCompatibilityHandler.isArmorWolfCompanion(mount)
+                || !canUseWaterWalking(mount)) return;
+        double surface = supportingWaterSurfaceAtCenter(mount);
+        if (Double.isNaN(surface)) return;
+        double correction = mountSurfaceCorrection(mount.getEntityBoundingBox().minY,
+                surface, mount.motionY);
+        if (Double.isNaN(correction)) return;
+        if (Math.abs(correction) > 0.000001D) {
+            mount.setPosition(mount.posX, mount.posY + correction, mount.posZ);
+        }
+        mount.motionY = 0.0D;
+        mount.onGround = true;
+        mount.isAirBorne = false;
+        mount.fallDistance = 0.0F;
+        mount.velocityChanged = true;
+    }
+
     public static void addWaterSurfaceCollisions(GetCollisionBoxesEvent event) {
         if (event == null || !canUseWaterWalking(event.getEntity())) return;
         Entity entity = event.getEntity();
-        if (entity.motionY > 0.15D) return;
         AxisAlignedBB query = event.getAabb();
         AxisAlignedBB body = entity.getEntityBoundingBox();
         double feet = body.minY;
@@ -117,7 +137,7 @@ public final class ChakraControlCompatibility {
                     pos.setPos(x, y, z);
                     if (!isWaterSurface(entity.world, pos)) continue;
                     double top = y + 1.0D;
-                    if (feet < top - WATER_SURFACE_GRACE) continue;
+                    if (!approachingSurfaceFromAbove(feet, top)) continue;
                     AxisAlignedBB surface = new AxisAlignedBB(x, top - WATER_SURFACE_THICKNESS, z,
                             x + 1.0D, top + 0.001D, z + 1.0D);
                     if (surface.intersects(query)) event.getCollisionBoxesList().add(surface);
@@ -136,7 +156,15 @@ public final class ChakraControlCompatibility {
     }
 
     private static boolean applyWaterWalking(EntityLivingBase entity) {
-        if (!canUseWaterWalking(entity) || !isSupportedByWaterSurface(entity)) return false;
+        if (!canUseWaterWalking(entity)) return false;
+        double surface = supportingWaterSurface(entity);
+        if (Double.isNaN(surface)) return false;
+        double lift = recoveryLift(entity.getEntityBoundingBox().minY, surface);
+        if (lift > 0.0D) {
+            entity.setPosition(entity.posX, entity.posY + lift + WATER_SURFACE_ENTRY_EPSILON,
+                    entity.posZ);
+            if (entity.motionY < 0.0D) entity.motionY = 0.0D;
+        }
         entity.fallDistance = 0.0F;
         return true;
     }
@@ -150,23 +178,78 @@ public final class ChakraControlCompatibility {
             return !player.isSpectator() && !player.capabilities.isFlying
                     && !player.isElytraFlying() && isEnabled(player);
         }
+        if (ArmorWolfCompatibilityHandler.isArmorWolfCompanion(entity)) {
+            Entity rider = entity.getControllingPassenger();
+            return rider instanceof EntityPlayer
+                    && !((EntityPlayer) rider).isSpectator()
+                    && isEnabled((EntityPlayer) rider);
+        }
         return entity instanceof EntityMissionNpc
                 && ((EntityMissionNpc) entity).canUseChakraWaterWalking();
     }
 
-    private static boolean isSupportedByWaterSurface(EntityLivingBase entity) {
+    private static double supportingWaterSurface(EntityLivingBase entity) {
         AxisAlignedBB box = entity.getEntityBoundingBox().grow(0.08D, 0.0D, 0.08D);
         double feet = entity.getEntityBoundingBox().minY;
-        int y = (int) Math.floor(feet - 0.08D);
+        double closest = Double.NaN;
+        double closestDistance = Double.MAX_VALUE;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int x = (int) Math.floor(box.minX); x <= (int) Math.floor(box.maxX); x++) {
-            for (int z = (int) Math.floor(box.minZ); z <= (int) Math.floor(box.maxZ); z++) {
-                pos.setPos(x, y, z);
-                if (isWaterSurface(entity.world, pos)
-                        && Math.abs(feet - (y + 1.0D)) <= 0.28D) return true;
+        int lowestSurfaceBlock = (int) Math.floor(feet - WATER_SURFACE_RECOVERY_DEPTH);
+        int highestSurfaceBlock = (int) Math.floor(feet + WATER_SURFACE_RECOVERY_DEPTH - 1.0D);
+        for (int y = lowestSurfaceBlock; y <= highestSurfaceBlock; y++) {
+            double top = y + 1.0D;
+            double distance = Math.abs(feet - top);
+            if (distance > WATER_SURFACE_RECOVERY_DEPTH || distance >= closestDistance) continue;
+            for (int x = (int) Math.floor(box.minX); x <= (int) Math.floor(box.maxX); x++) {
+                for (int z = (int) Math.floor(box.minZ); z <= (int) Math.floor(box.maxZ); z++) {
+                    pos.setPos(x, y, z);
+                    if (isWaterSurface(entity.world, pos)) {
+                        closest = top;
+                        closestDistance = distance;
+                        break;
+                    }
+                }
             }
         }
-        return false;
+        return closest;
+    }
+
+    private static double supportingWaterSurfaceAtCenter(EntityLivingBase entity) {
+        double feet = entity.getEntityBoundingBox().minY;
+        int x = (int) Math.floor(entity.posX);
+        int z = (int) Math.floor(entity.posZ);
+        double closest = Double.NaN;
+        double closestDistance = Double.MAX_VALUE;
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        int lowestSurfaceBlock = (int) Math.floor(feet - WATER_SURFACE_RECOVERY_DEPTH);
+        int highestSurfaceBlock = (int) Math.floor(feet + WATER_SURFACE_RECOVERY_DEPTH - 1.0D);
+        for (int y = lowestSurfaceBlock; y <= highestSurfaceBlock; y++) {
+            double surface = y + 1.0D;
+            double distance = Math.abs(feet - surface);
+            if (distance > WATER_SURFACE_RECOVERY_DEPTH || distance >= closestDistance) continue;
+            pos.setPos(x, y, z);
+            if (!isWaterSurface(entity.world, pos)) continue;
+            closest = surface;
+            closestDistance = distance;
+        }
+        return closest;
+    }
+
+    static double mountSurfaceCorrection(double feet, double surface, double verticalVelocity) {
+        if (verticalVelocity > MOUNT_SURFACE_RELEASE_VELOCITY) return Double.NaN;
+        double correction = surface + WATER_SURFACE_ENTRY_EPSILON - feet;
+        return Math.abs(correction) <= WATER_SURFACE_RECOVERY_DEPTH
+                + WATER_SURFACE_ENTRY_EPSILON ? correction : Double.NaN;
+    }
+
+    static boolean approachingSurfaceFromAbove(double feet, double surface) {
+        return feet >= surface - WATER_SURFACE_ENTRY_EPSILON;
+    }
+
+    static double recoveryLift(double feet, double surface) {
+        double depth = surface - feet;
+        return depth > WATER_SURFACE_ENTRY_EPSILON
+                && depth <= WATER_SURFACE_RECOVERY_DEPTH ? depth : 0.0D;
     }
 
     private static boolean isWaterSurface(World world, BlockPos pos) {

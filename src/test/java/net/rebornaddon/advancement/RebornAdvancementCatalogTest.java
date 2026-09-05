@@ -5,6 +5,8 @@ import org.junit.Test;
 import java.util.Arrays;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class RebornAdvancementCatalogTest {
     @Test
@@ -56,5 +58,17 @@ public class RebornAdvancementCatalogTest {
                 RebornAdvancementService.MODES,
                 RebornAdvancementService.STORE),
                 RebornAdvancementService.rootIdsForDisplay());
+    }
+
+    @Test
+    public void onlyTheRealNarutoNinjaRootAliasesToTheRebornRoot() {
+        assertTrue(RebornAdvancementService.isLegacyNinjaAlias(
+                "narutomod:ninjaachievement"));
+        assertFalse(RebornAdvancementService.isLegacyNinjaAlias(
+                "narutomodaddon:started_as_ninja"));
+        assertFalse(RebornAdvancementService.isLegacyNinjaAlias(
+                "narutomod:achievementmedicalgenin"));
+        assertFalse(RebornAdvancementService.isLegacyNinjaAlias(
+                "narutomod:learned_1st_jutsu"));
     }
 }

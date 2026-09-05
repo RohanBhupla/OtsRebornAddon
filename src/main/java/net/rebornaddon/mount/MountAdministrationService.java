@@ -141,8 +141,11 @@ public final class MountAdministrationService {
             }
             String id = entityId.toString();
             if ("grant".equals(verb)) {
-                grant(data, id, mount, object(directive.get("configuration")),
-                        scalePolicy.scale(id, mount));
+                JsonObject configuration = object(directive.get("configuration"));
+                grant(data, id, mount, configuration, scalePolicy.scale(id, mount));
+                if (bool(configuration, "select")) {
+                    reconcileActiveSelection(server, data, id, mount);
+                }
             } else {
                 revoke(server, target, data, id, mount);
             }
@@ -356,6 +359,14 @@ public final class MountAdministrationService {
         }
     }
 
+    private static void reconcileActiveSelection(MinecraftServer server, Object data,
+                                                 String id, boolean mount) throws Exception {
+        UUID activeId = (UUID) call(data, mount ? "getMountUuid" : "getCompanionUuid");
+        Entity active = findEntity(server, activeId);
+        if (active == null || !ArmorWolfCompatibilityHandler.isArmorWolfCompanion(active)) return;
+        applySelectedWrapperState(active, data, id, mount);
+    }
+
     private static Entity findEntity(MinecraftServer server, UUID entityId) {
         if (server == null || entityId == null) return null;
         for (net.minecraft.world.WorldServer world : server.worlds) {
@@ -405,6 +416,40 @@ public final class MountAdministrationService {
         } catch (Throwable failure) {
             return "inspection failed: " + failure.getClass().getSimpleName();
         }
+    }
+
+    boolean reconcileSpawnedForm(EntityPlayerMP player, Entity entity) {
+        if (player == null || entity == null || !isAvailable()
+                || !ArmorWolfCompatibilityHandler.isArmorWolfCompanion(entity)) return false;
+        try {
+            Object data = capability(player);
+            if (data == null) return false;
+            UUID entityId = entity.getUniqueID();
+            UUID companionId = (UUID) call(data, "getCompanionUuid");
+            UUID mountId = (UUID) call(data, "getMountUuid");
+            boolean mount;
+            if (entityId.equals(mountId)) mount = true;
+            else if (entityId.equals(companionId)) mount = false;
+            else return false;
+
+            String selected = (String) call(data,
+                    mount ? "getMountForm" : "getCompanionForm");
+            if (selected == null || selected.isEmpty()) return true;
+            applySelectedWrapperState(entity, data, selected, mount);
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    static void applySelectedWrapperState(Object wrapper, Object data,
+                                          String selected, boolean mount) throws Exception {
+        String current = (String) call(wrapper, "getCompanionForm");
+        float scale = ((Number) call(data, "getEntityScale", selected,
+                Boolean.valueOf(mount))).floatValue();
+        if (!selected.equals(current)) call(wrapper, "setCompanionForm", selected);
+        call(wrapper, "setCompanionScale",
+                Float.valueOf(MountScalePolicy.checked(scale)));
     }
 
     private static void setNumber(JsonObject source, String key, double minimum, double maximum,

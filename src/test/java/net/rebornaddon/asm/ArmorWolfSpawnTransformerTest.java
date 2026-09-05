@@ -116,6 +116,26 @@ public class ArmorWolfSpawnTransformerTest {
         assertEquals(1, finish);
     }
 
+    @Test
+    public void recordsEveryClientWolfRenderFallback() {
+        byte[] transformed = new ArmorWolfSpawnTransformer().transform(
+                "com.armourwolfmod.client.render.RenderCompanionWolf",
+                "com.armourwolfmod.client.render.RenderCompanionWolf", rendererFixture());
+        ClassNode node = new ClassNode();
+        new ClassReader(transformed).accept(node, 0);
+        int hooks = 0;
+        for (MethodNode method : node.methods) {
+            for (AbstractInsnNode instruction = method.instructions.getFirst();
+                 instruction != null; instruction = instruction.getNext()) {
+                if (!(instruction instanceof MethodInsnNode)) continue;
+                MethodInsnNode call = (MethodInsnNode) instruction;
+                if ("net/rebornaddon/mount/client/ArmorWolfRenderDiagnostics".equals(call.owner)
+                        && "recordFallback".equals(call.name)) hooks++;
+            }
+        }
+        assertEquals(1, hooks);
+    }
+
     private static byte[] fixture() {
         ClassNode node = new ClassNode();
         node.version = Opcodes.V1_8;
@@ -197,6 +217,23 @@ public class ArmorWolfSpawnTransformerTest {
         method.instructions.add(new InsnNode(Opcodes.RETURN));
         method.maxStack = 0;
         method.maxLocals = 2;
+        node.methods.add(method);
+        ClassWriter writer = new ClassWriter(0);
+        node.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] rendererFixture() {
+        ClassNode node = new ClassNode();
+        node.version = Opcodes.V1_8;
+        node.access = Opcodes.ACC_PUBLIC;
+        node.name = "com/armourwolfmod/client/render/RenderCompanionWolf";
+        node.superName = "java/lang/Object";
+        MethodNode method = new MethodNode(Opcodes.ACC_PRIVATE, "renderWithFallback",
+                "(Lcom/armourwolfmod/entity/EntitySkinWolf;DDDFFF)V", null, null);
+        method.instructions.add(new InsnNode(Opcodes.RETURN));
+        method.maxStack = 0;
+        method.maxLocals = 11;
         node.methods.add(method);
         ClassWriter writer = new ClassWriter(0);
         node.accept(writer);

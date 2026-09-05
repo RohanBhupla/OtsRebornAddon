@@ -109,7 +109,7 @@ public final class GuiNativeDialogue extends RebornScaledGuiScreen {
             rebuild();
         } else if (button.id == NEXT) {
             complete();
-        } else if (button.id >= CHOICE_BASE) {
+        } else if (button.id >= CHOICE_BASE && button.id < CHOICE_BASE + 8) {
             Page current = pages.get(Math.max(0, Math.min(page, pages.size() - 1)));
             int index = button.id - CHOICE_BASE;
             if (current.choices == null || index < 0 || index >= current.choices.size()) return;

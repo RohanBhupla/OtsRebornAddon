@@ -7,9 +7,11 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.VarInsnNode;
 import org.objectweb.asm.Type;
 
 import static org.junit.Assert.assertEquals;
@@ -90,6 +92,35 @@ public class NarutoModeCompatibilityTransformerTest {
         assertTrue(helper != null);
         assertEquals("net/rebornaddon/compat/ChakraControlCompatibility", helper.owner);
         assertEquals("applyBaseNinjaSkills", helper.name);
+    }
+
+    @Test
+    public void redirectsNarutoLevelGateWithoutChangingRealExperience() {
+        String className = NarutoModeCompatibilityTransformer.CHAKRA_PLAYER_HOOK;
+        ClassNode input = classWithMethod(className, Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC,
+                "gate", "(Lnet/minecraft/entity/player/EntityPlayer;)I");
+        MethodNode method = input.methods.get(0);
+        method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        method.instructions.add(new FieldInsnNode(Opcodes.GETFIELD,
+                "net/minecraft/entity/player/EntityPlayer", "field_71068_ca", "I"));
+        method.instructions.add(new org.objectweb.asm.tree.IntInsnNode(Opcodes.BIPUSH, 10));
+        method.instructions.add(new InsnNode(Opcodes.IADD));
+        method.instructions.add(new InsnNode(Opcodes.IRETURN));
+        method.maxStack = 2;
+        method.maxLocals = 1;
+
+        MethodNode output = transform(className, input);
+        int helpers = 0;
+        for (AbstractInsnNode instruction = output.instructions.getFirst();
+             instruction != null; instruction = instruction.getNext()) {
+            if (instruction instanceof MethodInsnNode
+                    && NarutoModeCompatibilityTransformer.NINJA_ACCESS_HELPER
+                    .equals(((MethodInsnNode) instruction).owner)
+                    && "ninjaAccessLevel".equals(((MethodInsnNode) instruction).name)) {
+                helpers++;
+            }
+        }
+        assertEquals(1, helpers);
     }
 
     @Test

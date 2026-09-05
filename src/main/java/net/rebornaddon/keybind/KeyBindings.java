@@ -24,6 +24,7 @@ public class KeyBindings {
     public static KeyBinding substitution;
     public static KeyBinding discordLink;
     public static KeyBinding chakraControl;
+    public static KeyBinding zoom;
 
     public static void register() {
         openHub = new KeyBinding("key.rebornaddon.open_hub", Keyboard.KEY_H, "key.categories.rebornaddon");
@@ -31,10 +32,12 @@ public class KeyBindings {
         discordLink = new KeyBinding("key.rebornaddon.discord_link", Keyboard.KEY_NONE, "key.categories.rebornaddon");
         chakraControl = new KeyBinding("key.rebornaddon.chakra_control", Keyboard.KEY_Z,
                 "key.categories.rebornaddon");
+        zoom = new KeyBinding("key.rebornaddon.zoom", Keyboard.KEY_C, "key.categories.rebornaddon");
         ClientRegistry.registerKeyBinding(openHub);
         ClientRegistry.registerKeyBinding(substitution);
         ClientRegistry.registerKeyBinding(discordLink);
         ClientRegistry.registerKeyBinding(chakraControl);
+        ClientRegistry.registerKeyBinding(zoom);
     }
 
     @SubscribeEvent
